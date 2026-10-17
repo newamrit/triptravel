@@ -1,0 +1,6 @@
+{
+  "name": "TripPool - Group Trip & Float Fund Expense Manager",
+  "description": "Mobile-first offline expense management app for group trips with float pool funds, rolling deposits, smart split calculations, and debt settlement.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

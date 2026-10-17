@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+html, body {
+  font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  overflow-x: hidden;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  letter-spacing: -0.01em;
+}
+
+/* JetBrains Mono font for financial digits & currency amounts */
+.font-mono, [style*="fontFamily: 'monospace'"], [style*='fontFamily: "monospace"'] {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+}
+
+/* Hide scrollbar for clean horizontal chips scrolling on touch devices */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

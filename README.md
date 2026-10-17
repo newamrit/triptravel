@@ -1,11 +1,40 @@
-<div align="center">
+# TripPool Nepal - Group Travel Expense & Float Fund Manager
 
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+TripPool is a mobile-first Progressive Web Application (PWA) designed for group roadtrips, mountain expeditions, and overland travel. It simplifies float fund pool deposits, expense receipt logging with live camera capture, and automated debt settlement calculations.
 
-  <h1>Built with AI Studio</h2>
+---
 
-  <p>The fastest path from prompt to production with Gemini.</p>
+## ✨ Features
 
-  <a href="https://aistudio.google.com/apps">Start building</a>
+- 🔐 **Encrypted Authentication**: PBKDF2-HMAC-SHA256 (100k iterations) password security with anti-brute force lockout and 24h session expiration.
+- 💵 **Live Pool Cash Balance**: Auto-calculates remaining float cash, total deposits, and category expense distribution.
+- 📸 **Receipt Photo Capture**: Real-time camera viewfinder & file upload with client-side canvas image compression.
+- ⚖️ **Smart Debt Engine**: Calculates optimal debt reconciliation (Pool Custodian vs Peer-to-Peer calculation modes).
+- 📲 **Installable PWA**: Standalone mobile app installation with offline mountain mode support.
+- 🛡️ **cPanel Hardened**: Includes `.htaccess` for Apache hosting with HTTPS enforcement, SPA route fallback, and security response headers.
 
-</div>
+---
+
+## 🚀 Quick Start & Development
+
+```bash
+# Install dependencies
+npm install
+
+# Start local development server
+npm run dev
+
+# Run TypeScript linter
+npm run lint
+
+# Build for production
+npm run build
+```
+
+---
+
+## 📄 cPanel Deployment Guide
+
+For full cPanel deployment instructions, Apache security configurations, and database sync setup, view:
+
+👉 **[cPanel Deployment Guide (CPANEL_DEPLOYMENT_GUIDE.md)](./CPANEL_DEPLOYMENT_GUIDE.md)**

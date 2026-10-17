@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+    <linearGradient id="icon" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34d399"/>
+      <stop offset="100%" stop-color="#10b981"/>
+    </linearGradient>
+  </defs>
+  <!-- Background -->
+  <rect width="512" height="512" rx="128" fill="url(#bg)"/>
+  <!-- Wallet / Float Fund Symbol -->
+  <path d="M128 160C128 142.327 142.327 128 160 128H352C369.673 128 384 142.327 384 160V192H160C142.327 192 128 177.673 128 160Z" fill="url(#icon)" opacity="0.6"/>
+  <rect x="128" y="192" width="256" height="192" rx="32" fill="url(#icon)"/>
+  <circle cx="304" cy="288" r="28" fill="#0f172a"/>
+  <circle cx="304" cy="288" r="14" fill="#34d399"/>
+  <!-- Mountain Overlay Peak -->
+  <path d="M180 336L230 250L270 300L310 230L360 336H180Z" fill="#ffffff" opacity="0.9"/>
+</svg>
