@@ -1,8 +1,10 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, lazy, Suspense } from 'react';
 import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import Snackbar from '@mui/material/Snackbar';
 import Alert from '@mui/material/Alert';
+import Box from '@mui/material/Box';
+import CircularProgress from '@mui/material/CircularProgress';
 import { muiTheme } from './theme/theme';
 import { Trip, Member, Deposit, Expense, ExpenseCategory, PayerType, SplitType, PaymentMethod } from './types';
 import { StorageService, AppConfig } from './services/storage';
@@ -11,18 +13,25 @@ import { ApiSyncService } from './services/apiSync';
 import { TopBar } from './components/TopBar';
 import { OfflineBanner } from './components/OfflineBanner';
 import { BottomNav } from './components/BottomNav';
-import { DashboardView } from './components/DashboardView';
-import { ExpensesView } from './components/ExpensesView';
-import { DepositsView } from './components/DepositsView';
-import { SettlementView } from './components/SettlementView';
-import { MembersView } from './components/MembersView';
-import { ExpenseModal } from './components/ExpenseModal';
-import { DepositModal } from './components/DepositModal';
-import { BackendModal } from './components/BackendModal';
+// Route-level code splitting: heavy views (recharts dashboard, modals) load on demand.
+const DashboardView = lazy(() => import('./components/DashboardView').then(m => ({ default: m.DashboardView })));
+const ExpensesView = lazy(() => import('./components/ExpensesView').then(m => ({ default: m.ExpensesView })));
+const DepositsView = lazy(() => import('./components/DepositsView').then(m => ({ default: m.DepositsView })));
+const SettlementView = lazy(() => import('./components/SettlementView').then(m => ({ default: m.SettlementView })));
+const MembersView = lazy(() => import('./components/MembersView').then(m => ({ default: m.MembersView })));
+const ExpenseModal = lazy(() => import('./components/ExpenseModal').then(m => ({ default: m.ExpenseModal })));
+const DepositModal = lazy(() => import('./components/DepositModal').then(m => ({ default: m.DepositModal })));
+const BackendModal = lazy(() => import('./components/BackendModal').then(m => ({ default: m.BackendModal })));
 import { LoginScreen } from './components/LoginScreen';
 import { PWAInstallPopup } from './components/PWAInstallPopup';
 import { AuthService } from './services/authService';
 import { AuthSession } from './types';
+
+const ViewLoader = () => (
+  <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+    <CircularProgress size={28} />
+  </Box>
+);
 
 export default function App() {
   // Authentication Session
@@ -49,23 +58,47 @@ export default function App() {
     AuthService.init();
   }, []);
 
-  // 100% Database Sync: Query Database REST API on mount & tab navigation
+  // 100% Database Sync: Query Database REST API on mount and when returning to a tab.
+  // Previously this effect re-ran the full multi-endpoint fetch on EVERY tab switch,
+  // hammering the API and re-rendering all views with fresh array identities each time.
+  // Now each entity is only re-fetched for tabs that actually consume it.
+  const lastSyncRef = React.useRef<Record<string, number>>({});
   useEffect(() => {
     let isMounted = true;
     const syncWithDatabase = async () => {
       try {
-        const [dbMembers, dbExpenses, dbDeposits, dbTrip] = await Promise.all([
-          StorageService.fetchMembersFromApi(),
-          StorageService.fetchExpensesFromApi(),
-          StorageService.fetchDepositsFromApi(),
-          StorageService.fetchTripFromApi(),
-        ]);
-        if (isMounted) {
-          if (Array.isArray(dbMembers)) setMembers(dbMembers);
-          if (Array.isArray(dbExpenses)) setExpenses(dbExpenses);
-          if (Array.isArray(dbDeposits)) setDeposits(dbDeposits);
-          if (dbTrip) setTrip(dbTrip);
+        const now = Date.now();
+        const shouldFetch = (key: string, ttlMs: number) => {
+          const last = lastSyncRef.current[key] || 0;
+          if (now - last < ttlMs) return false;
+          lastSyncRef.current[key] = now;
+          return true;
+        };
+
+        const tasks: Promise<void>[] = [];
+
+        if (shouldFetch('members', 30000)) {
+          tasks.push(StorageService.fetchMembersFromApi().then(dbMembers => {
+            if (isMounted && Array.isArray(dbMembers)) setMembers(dbMembers);
+          }));
         }
+        if (['expenses', 'dashboard'].includes(activeTab) && shouldFetch('expenses', 30000)) {
+          tasks.push(StorageService.fetchExpensesFromApi().then(dbExpenses => {
+            if (isMounted && Array.isArray(dbExpenses)) setExpenses(dbExpenses);
+          }));
+        }
+        if (['deposits', 'dashboard'].includes(activeTab) && shouldFetch('deposits', 30000)) {
+          tasks.push(StorageService.fetchDepositsFromApi().then(dbDeposits => {
+            if (isMounted && Array.isArray(dbDeposits)) setDeposits(dbDeposits);
+          }));
+        }
+        if (shouldFetch('trip', 60000)) {
+          tasks.push(StorageService.fetchTripFromApi().then(dbTrip => {
+            if (isMounted && dbTrip) setTrip(dbTrip);
+          }));
+        }
+
+        await Promise.all(tasks);
       } catch (err) {
         console.warn('Database auto-sync notice:', err);
       }
@@ -95,12 +128,20 @@ export default function App() {
     StorageService.saveConfig(config);
   }, [config]);
 
-  const showToast = (msg: string) => {
+  const showToast = useCallback((msg: string) => {
     setToast(msg);
     setTimeout(() => {
       setToast(null);
     }, 3000);
-  };
+  }, []);
+
+  // Stable callbacks so memoized children don't re-render on every App render.
+  const openExpenseModal = useCallback(() => setIsExpenseModalOpen(true), []);
+  const closeExpenseModal = useCallback(() => setIsExpenseModalOpen(false), []);
+  const openDepositModal = useCallback(() => setIsDepositModalOpen(true), []);
+  const closeDepositModal = useCallback(() => setIsDepositModalOpen(false), []);
+  const openBackendModal = useCallback(() => setIsBackendModalOpen(true), []);
+  const closeBackendModal = useCallback(() => setIsBackendModalOpen(false), []);
 
   // 2. Settlement Engine (Auto recalculates on any financial movement)
   const settlementResult = useMemo(() => {
@@ -349,8 +390,8 @@ export default function App() {
               AuthService.logout();
               setSession(null);
             }}
-            onOpenBackend={() => setIsBackendModalOpen(true)}
-            onOpenExpenseModal={() => setIsExpenseModalOpen(true)}
+            onOpenBackend={openBackendModal}
+            onOpenExpenseModal={openExpenseModal}
           />
 
           {/* Offline / Mountain Mode Notice Banner */}
@@ -364,93 +405,107 @@ export default function App() {
 
           {/* Main View Router */}
           <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 py-4 sm:py-6 pb-24 md:pb-8">
-            {activeTab === 'dashboard' && (
-              <DashboardView
-                trip={trip}
-                members={members}
-                deposits={deposits}
-                expenses={expenses}
-                settlement={settlementResult}
-                onOpenExpenseModal={() => setIsExpenseModalOpen(true)}
-                onOpenDepositModal={() => setIsDepositModalOpen(true)}
-                setActiveTab={setActiveTab}
-              />
-            )}
+            <Suspense fallback={<ViewLoader />}>
+              {activeTab === 'dashboard' && (
+                <DashboardView
+                  trip={trip}
+                  members={members}
+                  deposits={deposits}
+                  expenses={expenses}
+                  settlement={settlementResult}
+                  onOpenExpenseModal={openExpenseModal}
+                  onOpenDepositModal={openDepositModal}
+                  setActiveTab={setActiveTab}
+                />
+              )}
 
-            {activeTab === 'expenses' && (
-              <ExpensesView
-                expenses={expenses}
-                members={members}
-                trip={trip}
-                onOpenExpenseModal={() => setIsExpenseModalOpen(true)}
-                onDeleteExpense={handleDeleteExpense}
-              />
-            )}
+              {activeTab === 'expenses' && (
+                <ExpensesView
+                  expenses={expenses}
+                  members={members}
+                  trip={trip}
+                  onOpenExpenseModal={openExpenseModal}
+                  onDeleteExpense={handleDeleteExpense}
+                />
+              )}
 
-            {activeTab === 'deposits' && (
-              <DepositsView
-                deposits={deposits}
-                members={members}
-                trip={trip}
-                onOpenDepositModal={() => setIsDepositModalOpen(true)}
-                onDeleteDeposit={handleDeleteDeposit}
-              />
-            )}
+              {activeTab === 'deposits' && (
+                <DepositsView
+                  deposits={deposits}
+                  members={members}
+                  trip={trip}
+                  onOpenDepositModal={openDepositModal}
+                  onDeleteDeposit={handleDeleteDeposit}
+                />
+              )}
 
-            {activeTab === 'settlement' && (
-              <SettlementView
-                settlement={settlementResult}
-                trip={trip}
-                members={members}
-              />
-            )}
+              {activeTab === 'settlement' && (
+                <SettlementView
+                  settlement={settlementResult}
+                  trip={trip}
+                  members={members}
+                />
+              )}
 
-            {activeTab === 'members' && (
-              <MembersView
-                trip={trip}
-                members={members}
-                onSaveTrip={handleSaveTrip}
-                onAddMember={handleAddMember}
-                onUpdateMember={handleUpdateMember}
-                onDeleteMember={handleDeleteMember}
-              />
-            )}
+              {activeTab === 'members' && (
+                <MembersView
+                  trip={trip}
+                  members={members}
+                  onSaveTrip={handleSaveTrip}
+                  onAddMember={handleAddMember}
+                  onUpdateMember={handleUpdateMember}
+                  onDeleteMember={handleDeleteMember}
+                />
+              )}
+            </Suspense>
           </main>
 
           {/* Fixed Mobile Bottom Tab Bar */}
           <BottomNav
             activeTab={activeTab}
             setActiveTab={setActiveTab}
-            onOpenExpenseModal={() => setIsExpenseModalOpen(true)}
+            onOpenExpenseModal={openExpenseModal}
           />
 
-          {/* Modals & Dialogs */}
-          <ExpenseModal
-            isOpen={isExpenseModalOpen}
-            onClose={() => setIsExpenseModalOpen(false)}
-            members={members}
-            currency={trip.currency}
-            onSaveExpense={handleSaveExpense}
-          />
+          {/* Modals & Dialogs (mounted only while open to skip needless renders) */}
+          {isExpenseModalOpen && (
+            <Suspense fallback={null}>
+              <ExpenseModal
+                isOpen={isExpenseModalOpen}
+                onClose={closeExpenseModal}
+                members={members}
+                currency={trip.currency}
+                onSaveExpense={handleSaveExpense}
+              />
+            </Suspense>
+          )}
 
-          <DepositModal
-            isOpen={isDepositModalOpen}
-            onClose={() => setIsDepositModalOpen(false)}
-            members={members}
-            currency={trip.currency}
-            onSaveDeposit={handleSaveDeposit}
-          />
+          {isDepositModalOpen && (
+            <Suspense fallback={null}>
+              <DepositModal
+                isOpen={isDepositModalOpen}
+                onClose={closeDepositModal}
+                members={members}
+                currency={trip.currency}
+                onSaveDeposit={handleSaveDeposit}
+              />
+            </Suspense>
+          )}
 
-          <BackendModal
-            isOpen={isBackendModalOpen}
-            onClose={() => setIsBackendModalOpen(false)}
-            config={config}
-            onUpdateConfig={setConfig}
-            queuedItems={queuedItems}
-            onTriggerSync={triggerBackgroundSync}
-            onResetData={handleResetData}
-            isSyncing={isSyncing}
-          />
+          {isBackendModalOpen && (
+            <Suspense fallback={null}>
+              <BackendModal
+                isOpen={isBackendModalOpen}
+                onClose={closeBackendModal}
+                config={config}
+                onUpdateConfig={setConfig}
+                queuedItems={queuedItems}
+                onTriggerSync={triggerBackgroundSync}
+                onResetData={handleResetData}
+                isSyncing={isSyncing}
+              />
+            </Suspense>
+          )}
 
           {/* Mobile Android App Install Prompt Popup */}
           <PWAInstallPopup isOpenTriggered={Boolean(session)} />

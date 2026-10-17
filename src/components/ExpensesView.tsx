@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
@@ -17,7 +17,8 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import { Expense, ExpenseCategory, Trip, Member } from '../types';
 import { getCategoryIcon, getCategoryBadgeClass } from '../utils/categoryIcons';
-import { ReceiptViewerModal } from './ReceiptViewerModal';
+// Lazy-loaded: the receipt viewer is only needed after a user taps a receipt photo.
+const ReceiptViewerModal = React.lazy(() => import('./ReceiptViewerModal').then(m => ({ default: m.ReceiptViewerModal })));
 
 interface ExpensesViewProps {
   expenses: Expense[];
@@ -49,21 +50,28 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedReceiptExpense, setSelectedReceiptExpense] = useState<Expense | null>(null);
 
-  const filteredExpenses = expenses.filter(exp => {
-    if (selectedCategory !== 'all' && exp.category !== selectedCategory) return false;
-    if (payerFilter === 'pool' && exp.payer_type !== 'pool') return false;
-    if (payerFilter === 'member' && exp.payer_type !== 'member') return false;
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      const matchDesc = exp.description.toLowerCase().includes(q);
-      const matchPayer = (exp.payer_member_name || '').toLowerCase().includes(q);
-      const matchCat = exp.category.toLowerCase().includes(q);
-      if (!matchDesc && !matchPayer && !matchCat) return false;
-    }
-    return true;
-  });
+  // Memoized so the list is only re-filtered when data or filters change,
+  // not on every unrelated re-render of this view.
+  const filteredExpenses = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return expenses.filter(exp => {
+      if (selectedCategory !== 'all' && exp.category !== selectedCategory) return false;
+      if (payerFilter === 'pool' && exp.payer_type !== 'pool') return false;
+      if (payerFilter === 'member' && exp.payer_type !== 'member') return false;
+      if (q) {
+        const matchDesc = exp.description.toLowerCase().includes(q);
+        const matchPayer = (exp.payer_member_name || '').toLowerCase().includes(q);
+        const matchCat = exp.category.toLowerCase().includes(q);
+        if (!matchDesc && !matchPayer && !matchCat) return false;
+      }
+      return true;
+    });
+  }, [expenses, selectedCategory, payerFilter, searchQuery]);
 
-  const totalFiltered = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
+  const totalFiltered = useMemo(
+    () => filteredExpenses.reduce((sum, e) => sum + e.amount, 0),
+    [filteredExpenses]
+  );
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 2, sm: 3 } }}>
@@ -323,6 +331,8 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       )}
 
       {/* Fullscreen / Bottomsheet Receipt Photo Viewer */}
+      {selectedReceiptExpense && (
+      <React.Suspense fallback={null}>
       <ReceiptViewerModal
         isOpen={Boolean(selectedReceiptExpense)}
         onClose={() => setSelectedReceiptExpense(null)}
@@ -330,6 +340,8 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
         title={selectedReceiptExpense?.description || 'Receipt Photo'}
         subtitle={`${trip.currency} ${selectedReceiptExpense?.amount?.toLocaleString()} · Paid by ${selectedReceiptExpense?.payer_type === 'pool' ? 'Trip Pool' : selectedReceiptExpense?.payer_member_name || 'Friend'}`}
       />
+      </React.Suspense>
+      )}
     </Box>
   );
 };
