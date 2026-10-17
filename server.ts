@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import mysql from 'mysql2/promise';
 import path from 'path';
+import { gzipSync, constants as zlibConstants } from 'zlib';
 import { createServer as createViteServer } from 'vite';
 
 dotenv.config();
@@ -12,6 +13,26 @@ const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json({ limit: '20mb' }));
+
+// Performance: gzip API responses when the client supports it (no extra dep needed)
+app.use((req, res, next) => {
+  const acceptEncoding = req.headers['accept-encoding'] || '';
+  if (/gzip/.test(acceptEncoding)) {
+    res.json = (body: any) => {
+      const payload = Buffer.from(JSON.stringify(body));
+      // Skip compression for tiny payloads where gzip costs more than it saves
+      if (payload.length < 1024) {
+        res.removeHeader('Content-Encoding');
+        return res.send(payload);
+      }
+      res.setHeader('Content-Encoding', 'gzip');
+      res.setHeader('Vary', 'Accept-Encoding');
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      return res.end(gzipSync(payload, { level: zlibConstants.Z_BEST_SPEED }));
+    };
+  }
+  next();
+});
 
 // Database connection pool setup (MySQL / MariaDB)
 const dbHost = process.env.MYSQL_HOST || process.env.DB_HOST || 'localhost';
@@ -28,8 +49,12 @@ try {
     password: dbPassword,
     database: dbName,
     waitForConnections: true,
-    connectionLimit: 10,
+    connectionLimit: Number(process.env.DB_POOL_SIZE || 20),
     queueLimit: 0,
+    // Performance: compress wire traffic and let the pool recycle idle connections
+    compress: true,
+    maxIdle: 5,
+    idleTimeout: 60000,
   });
   console.log(`[Database] MySQL Connection Pool created for host: ${dbHost}, database: ${dbName}`);
 } catch (err) {
@@ -118,6 +143,20 @@ let memExpenses = [
   }
 ];
 
+// Performance: attach weak ETags to JSON API GETs so repeat visits can 304
+// (browser fetch sends If-None-Match automatically for cached responses).
+function sendJson(res: any, body: any, req?: any): void {
+  if (req) {
+    const etag = 'W/"' + Buffer.byteLength(JSON.stringify(body)) + '-' + String(body && Array.isArray(body) ? body.length : 0) + '"';
+    res.setHeader('ETag', etag);
+    res.setHeader('Cache-Control', 'no-cache');
+    if (req.headers['if-none-match'] === etag) {
+      return res.status(304).end();
+    }
+  }
+  res.json(body);
+}
+
 // Helper to query MySQL or fallback to memory database
 async function queryDb(sql: string, params: any[] = []): Promise<any> {
   if (dbPool) {
@@ -144,9 +183,9 @@ app.get('/api/members', async (req, res) => {
       is_leader: Boolean(r.is_leader),
       is_active: Boolean(r.is_active)
     }));
-    return res.json(formatted);
+    return sendJson(res, formatted, req);
   }
-  res.json(memMembers);
+  sendJson(res, memMembers, req);
 });
 
 app.post('/api/members', async (req, res) => {
@@ -214,20 +253,38 @@ app.delete('/api/members/:id', async (req, res) => {
 
 // 2. Expenses Endpoints
 app.get('/api/expenses', async (req, res) => {
-  const dbRows = await queryDb('SELECT * FROM expenses ORDER BY expense_date DESC');
+  // Single round-trip LEFT JOIN instead of the previous N+1 pattern
+  // (one query per expense to fetch its splits).
+  const dbRows = await queryDb(
+    `SELECT e.*, es.member_id AS split_member_id, es.member_name AS split_member_name, es.split_amount
+     FROM expenses e
+     LEFT JOIN expense_splits es ON es.expense_id = e.id
+     ORDER BY e.expense_date DESC`
+  );
   if (dbRows) {
-    const formatted = [];
-    for (const exp of dbRows) {
-      const splits = await queryDb('SELECT member_id, member_name, split_amount FROM expense_splits WHERE expense_id=?', [exp.id]);
-      formatted.push({
-        ...exp,
-        amount: Number(exp.amount),
-        splits: (splits || []).map((s: any) => ({ ...s, split_amount: Number(s.split_amount) }))
-      });
+    const byId = new Map<number, any>();
+    const formatted: any[] = [];
+    for (const row of dbRows as any[]) {
+      let exp = byId.get(row.id);
+      if (!exp) {
+        exp = { ...row, amount: Number(row.amount), splits: [] };
+        delete exp.split_member_id;
+        delete exp.split_member_name;
+        delete exp.split_amount;
+        byId.set(row.id, exp);
+        formatted.push(exp);
+      }
+      if (row.split_member_id != null) {
+        exp.splits.push({
+          member_id: row.split_member_id,
+          member_name: row.split_member_name,
+          split_amount: Number(row.split_amount)
+        });
+      }
     }
-    return res.json(formatted);
+    return sendJson(res, formatted, req);
   }
-  res.json(memExpenses);
+  sendJson(res, memExpenses, req);
 });
 
 app.post('/api/expenses', async (req, res) => {
@@ -241,10 +298,11 @@ app.post('/api/expenses', async (req, res) => {
 
   if (dbRes && dbRes.insertId) {
     const expId = dbRes.insertId;
-    if (Array.isArray(splits)) {
-      for (const s of splits) {
-        await queryDb('INSERT INTO expense_splits (expense_id, member_id, member_name, split_amount) VALUES (?, ?, ?, ?)', [expId, s.member_id, s.member_name, s.split_amount]);
-      }
+    if (Array.isArray(splits) && splits.length > 0) {
+      // One multi-row INSERT instead of one round-trip per split
+      const placeholders = splits.map(() => '(?, ?, ?, ?)').join(', ');
+      const flatParams = splits.flatMap((s: any) => [expId, s.member_id, s.member_name, s.split_amount]);
+      await queryDb(`INSERT INTO expense_splits (expense_id, member_id, member_name, split_amount) VALUES ${placeholders}`, flatParams);
     }
     return res.status(201).json({ id: expId, ...req.body });
   }
@@ -265,9 +323,9 @@ app.delete('/api/expenses/:id', async (req, res) => {
 app.get('/api/deposits', async (req, res) => {
   const dbRows = await queryDb('SELECT * FROM deposits ORDER BY deposited_at DESC');
   if (dbRows) {
-    return res.json(dbRows.map((r: any) => ({ ...r, amount: Number(r.amount) })));
+    return sendJson(res, dbRows.map((r: any) => ({ ...r, amount: Number(r.amount) })), req);
   }
-  res.json(memDeposits);
+  sendJson(res, memDeposits, req);
 });
 
 app.post('/api/deposits', async (req, res) => {
@@ -299,9 +357,9 @@ app.delete('/api/deposits/:id', async (req, res) => {
 app.get('/api/trips', async (req, res) => {
   const dbRows = await queryDb('SELECT * FROM trips WHERE id=1');
   if (dbRows && dbRows.length > 0) {
-    return res.json(dbRows[0]);
+    return sendJson(res, dbRows[0], req);
   }
-  res.json(memTrip);
+  sendJson(res, memTrip, req);
 });
 
 app.put('/api/trips/:id', async (req, res) => {
@@ -341,7 +399,17 @@ async function startServer() {
       }
     });
   } else {
-    app.use(express.static(path.join(__dirname, 'dist')));
+    app.use(express.static(path.join(__dirname, 'dist'), {
+      index: false,
+      // Vite emits content-hashed filenames in /assets, so they can be cached forever
+      setHeaders: (res, filePath) => {
+        if (filePath.includes(`${path.sep}assets${path.sep}`) || /\.[0-9a-zA-Z_-]{8,}\.(js|css)$/.test(filePath)) {
+          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        } else {
+          res.setHeader('Cache-Control', 'no-cache');
+        }
+      },
+    }));
     app.use('*', (req, res) => {
       if (req.originalUrl.startsWith('/api')) return res.status(404).json({ error: 'Endpoint not found' });
       res.sendFile(path.join(__dirname, 'dist', 'index.html'));

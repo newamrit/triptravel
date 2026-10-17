@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
@@ -22,7 +22,8 @@ import {
 } from 'recharts';
 import { Trip, Member, Deposit, Expense, SettlementData } from '../types';
 import { getCategoryIcon } from '../utils/categoryIcons';
-import { ReceiptViewerModal } from './ReceiptViewerModal';
+// Lazy-loaded: the receipt viewer is only needed after a user taps a receipt photo.
+const ReceiptViewerModal = React.lazy(() => import('./ReceiptViewerModal').then(m => ({ default: m.ReceiptViewerModal })));
 
 const CATEGORY_COLORS: Record<string, string> = {
   'Fuel': '#f59e0b',
@@ -60,27 +61,37 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const totalCollected = settlement.summary.total_collected;
   const totalSpent = settlement.summary.total_spent;
 
-  // Combine deposits and expenses for recent activity feed
-  type ActivityItem = 
+  // Combine deposits and expenses for recent activity feed.
+  // Memoized: previously this rebuilt + sorted the full merged list on every render
+  // (including each keystroke in unrelated inputs), allocating fresh Date objects.
+  type ActivityItem =
     | { type: 'deposit'; data: Deposit; timestamp: number }
     | { type: 'expense'; data: Expense; timestamp: number };
 
-  const activities: ActivityItem[] = [
-    ...deposits.map(d => ({ type: 'deposit' as const, data: d, timestamp: new Date(d.deposited_at).getTime() })),
-    ...expenses.map(e => ({ type: 'expense' as const, data: e, timestamp: new Date(e.expense_date).getTime() }))
-  ].sort((a, b) => b.timestamp - a.timestamp);
-
-  const recentActivities = activities.slice(0, 6);
+  const recentActivities = useMemo(() => {
+    const activities: ActivityItem[] = [
+      ...deposits.map(d => ({ type: 'deposit' as const, data: d, timestamp: new Date(d.deposited_at).getTime() })),
+      ...expenses.map(e => ({ type: 'expense' as const, data: e, timestamp: new Date(e.expense_date).getTime() }))
+    ].sort((a, b) => b.timestamp - a.timestamp);
+    return activities.slice(0, 6);
+  }, [deposits, expenses]);
 
   // Top spending categories
-  const categories = Object.entries(settlement.summary.category_breakdown)
-    .sort((a, b) => b[1] - a[1]);
+  const categories = useMemo(
+    () => Object.entries(settlement.summary.category_breakdown).sort((a, b) => b[1] - a[1]),
+    [settlement.summary.category_breakdown]
+  );
 
-  const chartData = categories.map(([cat, amt]) => ({
-    name: cat,
-    value: amt,
-    color: CATEGORY_COLORS[cat] || '#64748b'
-  }));
+  const chartData = useMemo(
+    () => categories.map(([cat, amt]) => ({
+      name: cat,
+      value: amt,
+      color: CATEGORY_COLORS[cat] || '#64748b'
+    })),
+    [categories]
+  );
+
+  const activeMemberCount = useMemo(() => members.filter(m => m.is_active).length, [members]);
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 2, sm: 3 } }}>
@@ -206,7 +217,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   Active Friends
                 </Typography>
                 <Typography variant="subtitle1" sx={{ color: '#e2e8f0', fontWeight: 700 }}>
-                  {members.filter(m => m.is_active).length} members
+                  {activeMemberCount} members
                 </Typography>
               </Box>
               <Button
@@ -661,6 +672,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       </Card>
 
       {/* Fullscreen / Bottomsheet Receipt Photo Viewer */}
+      {selectedReceiptExpense && (
+      <React.Suspense fallback={null}>
       <ReceiptViewerModal
         isOpen={Boolean(selectedReceiptExpense)}
         onClose={() => setSelectedReceiptExpense(null)}
@@ -668,6 +681,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         title={selectedReceiptExpense?.description || 'Receipt Photo'}
         subtitle={`${trip.currency} ${selectedReceiptExpense?.amount?.toLocaleString()} · Paid by ${selectedReceiptExpense?.payer_type === 'pool' ? 'Trip Pool' : selectedReceiptExpense?.payer_member_name || 'Friend'}`}
       />
+      </React.Suspense>
+      )}
     </Box>
   );
 };
