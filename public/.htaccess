@@ -9,7 +9,25 @@
   RewriteCond %{HTTPS} off
   RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
 
-  # 2. SPA Fallback Routing for React
+  # 2. cPanel Apache API Endpoint Rewrites (Routes /api/* to /api/*.php)
+  RewriteRule ^api/members/?$ api/members.php [L,QSA]
+  RewriteRule ^api/members/([0-9]+)$ api/members.php?id=$1 [L,QSA]
+
+  RewriteRule ^api/expenses/?$ api/expenses.php [L,QSA]
+  RewriteRule ^api/expenses/([0-9]+)$ api/expenses.php?id=$1 [L,QSA]
+
+  RewriteRule ^api/deposits/?$ api/deposits.php [L,QSA]
+  RewriteRule ^api/deposits/([0-9]+)$ api/deposits.php?id=$1 [L,QSA]
+
+  RewriteRule ^api/trips/?$ api/trips.php [L,QSA]
+
+  RewriteRule ^api/auth/login/?$ api/login.php [L,QSA]
+
+  # 3. Bypass PHP files from SPA fallback
+  RewriteCond %{REQUEST_URI} \.php$ [NC]
+  RewriteRule .* - [L]
+
+  # 4. SPA Fallback Routing for React
   # If requested path is not an existing file or directory, serve index.html
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME} !-d

@@ -44,12 +44,37 @@ export default function App() {
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [toast, setToast] = useState<string | null>(null);
 
-  // Initialize demo accounts on app start
+  // Initialize seed accounts
   useEffect(() => {
     AuthService.init();
   }, []);
 
-  // Sync state to local storage whenever modified
+  // 100% Database Sync: Query Database REST API on mount & tab navigation
+  useEffect(() => {
+    let isMounted = true;
+    const syncWithDatabase = async () => {
+      try {
+        const [dbMembers, dbExpenses, dbDeposits, dbTrip] = await Promise.all([
+          StorageService.fetchMembersFromApi(),
+          StorageService.fetchExpensesFromApi(),
+          StorageService.fetchDepositsFromApi(),
+          StorageService.fetchTripFromApi(),
+        ]);
+        if (isMounted) {
+          if (Array.isArray(dbMembers)) setMembers(dbMembers);
+          if (Array.isArray(dbExpenses)) setExpenses(dbExpenses);
+          if (Array.isArray(dbDeposits)) setDeposits(dbDeposits);
+          if (dbTrip) setTrip(dbTrip);
+        }
+      } catch (err) {
+        console.warn('Database auto-sync notice:', err);
+      }
+    };
+    syncWithDatabase();
+    return () => { isMounted = false; };
+  }, [activeTab]);
+
+  // Save local mirror state
   useEffect(() => {
     StorageService.saveTrip(trip);
   }, [trip]);
@@ -78,12 +103,12 @@ export default function App() {
   };
 
   // 2. Settlement Engine (Auto recalculates on any financial movement)
-  const settlement = useMemo(() => {
+  const settlementResult = useMemo(() => {
     return calculateSettlement(trip, members, deposits, expenses);
   }, [trip, members, deposits, expenses]);
 
   // 3. Handlers for Expenses
-  const handleSaveExpense = (data: {
+  const handleSaveExpense = async (data: {
     amount: number;
     category: ExpenseCategory;
     payer_type: PayerType;
@@ -94,127 +119,130 @@ export default function App() {
     expense_date: string;
     receipt_image?: string | null;
   }) => {
-    const newId = Date.now();
-    const payerMember = data.payer_member_id ? members.find(m => m.id === data.payer_member_id) : null;
+    const activeMembers = members.filter(m => m.is_active);
+    const targetMembers = activeMembers.filter(m => data.split_members.includes(m.id));
 
-    // Distribute splits
-    const targetMemberIds = data.split_members.length > 0
-      ? data.split_members
-      : members.filter(m => m.is_active).map(m => m.id);
+    if (targetMembers.length === 0) {
+      showToast('Error: At least 1 active member required to split expense.');
+      return;
+    }
 
-    const share = targetMemberIds.length > 0 ? Math.round((data.amount / targetMemberIds.length) * 100) / 100 : 0;
-    const splits = targetMemberIds.map(mid => {
-      const m = members.find(item => item.id === mid);
-      return {
-        member_id: mid,
-        member_name: m?.name || `Member ${mid}`,
-        split_amount: share
-      };
-    });
+    const perPersonSplit = Math.round((data.amount / targetMembers.length) * 100) / 100;
+    const splits = targetMembers.map(m => ({
+      member_id: m.id,
+      member_name: m.name,
+      split_amount: perPersonSplit
+    }));
 
-    const newExpense: Expense = {
-      id: newId,
+    let payerName = 'Trip Pool';
+    if (data.payer_type === 'member' && data.payer_member_id) {
+      const payerObj = members.find(m => m.id === data.payer_member_id);
+      if (payerObj) payerName = payerObj.name;
+    }
+
+    const expensePayload = {
       trip_id: trip.id,
-      payer_type: data.payer_type,
-      payer_member_id: data.payer_member_id,
-      payer_member_name: payerMember?.name || (data.payer_type === 'pool' ? 'Trip Pool' : 'Friend'),
       amount: data.amount,
       category: data.category,
+      payer_type: data.payer_type,
+      payer_member_id: data.payer_member_id,
+      payer_member_name: payerName,
       description: data.description,
       split_type: data.split_type,
-      expense_date: data.expense_date,
       splits,
-      receipt_image: data.receipt_image || null
+      receipt_image: data.receipt_image,
+      expense_date: data.expense_date
     };
 
-    const updated = [newExpense, ...expenses];
-    setExpenses(updated);
+    if (!config.isSimulatedOffline) {
+      try {
+        const updated = await StorageService.addExpenseApi(expensePayload);
+        if (Array.isArray(updated) && updated.length > 0) {
+          setExpenses(updated);
+          showToast(`Logged ${trip.currency} ${data.amount} for ${data.category} to Database!`);
+          return;
+        }
+      } catch (e) {
+        console.warn('API expense save failed, falling back to offline queue:', e);
+      }
+    }
 
-    // Queue for sync
+    // Fallback or offline queue
+    const newId = Date.now();
+    const newExpense: Expense = {
+      id: newId,
+      ...expensePayload,
+      receipt_image: data.receipt_image || undefined
+    };
+
+    setExpenses([newExpense, ...expenses]);
     StorageService.addToQueue({
       type: 'expense',
       action: 'create',
-      payload: {
-        trip_id: trip.id,
-        amount: data.amount,
-        category: data.category,
-        payer_type: data.payer_type,
-        payer_member_id: data.payer_member_id,
-        description: data.description,
-        split_type: data.split_type,
-        split_members: targetMemberIds,
-        expense_date: data.expense_date,
-        receipt_image: data.receipt_image || null
-      }
+      payload: expensePayload
     });
     setQueuedItems(StorageService.getQueue());
-
-    showToast(`Expense "${data.description}" recorded (${trip.currency} ${data.amount})!`);
-
-    // Auto-sync attempt if connected
-    if (config.backendApiUrl && !config.isSimulatedOffline) {
-      triggerBackgroundSync();
-    }
+    showToast(`Logged ${trip.currency} ${data.amount} for ${data.category} (Queued Offline)!`);
   };
 
-  const handleDeleteExpense = (id: number) => {
-    const updated = expenses.filter(e => e.id !== id);
+  const handleDeleteExpense = async (id: number) => {
+    const updated = await StorageService.deleteExpenseApi(id);
     setExpenses(updated);
-    showToast('Expense removed.');
+    showToast('Expense removed from database.');
   };
 
   // 4. Handlers for Deposits
-  const handleSaveDeposit = (data: {
+  const handleSaveDeposit = async (data: {
     member_id: number;
     amount: number;
     payment_method: PaymentMethod;
     notes?: string;
     deposited_at: string;
   }) => {
-    const newId = Date.now();
     const member = members.find(m => m.id === data.member_id);
-
-    const newDeposit: Deposit = {
-      id: newId,
+    const depositPayload = {
       trip_id: trip.id,
       member_id: data.member_id,
-      member_name: member?.name || `Member ${data.member_id}`,
+      member_name: member?.name || 'Unknown Member',
       amount: data.amount,
       payment_method: data.payment_method,
-      notes: data.notes || 'Pool fund contribution',
-      deposited_at: data.deposited_at,
-      is_leader: member?.is_leader
+      notes: data.notes,
+      deposited_at: data.deposited_at
     };
 
-    const updated = [newDeposit, ...deposits];
-    setDeposits(updated);
+    if (!config.isSimulatedOffline) {
+      try {
+        const updated = await StorageService.addDepositApi(depositPayload);
+        if (Array.isArray(updated) && updated.length > 0) {
+          setDeposits(updated);
+          showToast(`Deposit of ${trip.currency} ${data.amount} from ${member?.name} recorded to Database!`);
+          return;
+        }
+      } catch (e) {
+        console.warn('API deposit save failed, falling back to offline queue:', e);
+      }
+    }
 
-    // Queue for sync
+    const newDeposit: Deposit = {
+      id: Date.now(),
+      ...depositPayload,
+      notes: data.notes || undefined
+    };
+
+    setDeposits([newDeposit, ...deposits]);
     StorageService.addToQueue({
       type: 'deposit',
       action: 'create',
-      payload: {
-        trip_id: trip.id,
-        member_id: data.member_id,
-        amount: data.amount,
-        payment_method: data.payment_method,
-        notes: data.notes,
-        deposited_at: data.deposited_at
-      }
+      payload: depositPayload
     });
     setQueuedItems(StorageService.getQueue());
-
-    showToast(`Deposit of ${trip.currency} ${data.amount} from ${member?.name} recorded!`);
-
-    if (config.backendApiUrl && !config.isSimulatedOffline) {
-      triggerBackgroundSync();
-    }
+    showToast(`Deposit of ${trip.currency} ${data.amount} from ${member?.name} recorded (Queued Offline)!`);
   };
 
-  const handleDeleteDeposit = (id: number) => {
-    const updated = deposits.filter(d => d.id !== id);
+  const handleDeleteDeposit = async (id: number) => {
+    const updated = await StorageService.deleteDepositApi(id);
     setDeposits(updated);
-    showToast('Deposit removed.');
+    showToast('Deposit removed from database.');
   };
 
   // 5. Handlers for Members & Trip
@@ -223,65 +251,35 @@ export default function App() {
     showToast('Trip profile updated.');
   };
 
-  const handleAddMember = (data: { name: string; phone?: string; notes?: string; is_leader: boolean }) => {
-    const newId = Date.now();
-    let currentMembers = [...members];
-
-    if (data.is_leader) {
-      currentMembers = currentMembers.map(m => ({ ...m, is_leader: false }));
-    }
-
-    const newMember: Member = {
-      id: newId,
-      trip_id: trip.id,
-      name: data.name,
-      phone: data.phone,
-      notes: data.notes,
-      is_leader: data.is_leader,
-      is_active: true
-    };
-
-    setMembers([...currentMembers, newMember]);
-
-    StorageService.addToQueue({
-      type: 'member',
-      action: 'create',
-      payload: {
-        trip_id: trip.id,
-        name: data.name,
-        phone: data.phone,
-        notes: data.notes,
-        is_leader: data.is_leader ? 1 : 0,
-        is_active: 1
-      }
-    });
-    setQueuedItems(StorageService.getQueue());
-    showToast(`${data.name} added to trip!`);
-  };
-
-  const handleUpdateMember = (id: number, updates: Partial<Member>) => {
-    let currentMembers = [...members];
-    if (updates.is_leader) {
-      currentMembers = currentMembers.map(m => ({ ...m, is_leader: false }));
-    }
-    const updated = currentMembers.map(m => m.id === id ? { ...m, ...updates } : m);
+  const handleAddMember = async (data: { name: string; phone?: string; notes?: string; is_leader: boolean }) => {
+    const updated = await StorageService.addMemberApi(data);
     setMembers(updated);
-    showToast('Member profile updated.');
+    showToast(`${data.name} added to database!`);
   };
 
-  const handleDeleteMember = (id: number) => {
-    setMembers(members.filter(m => m.id !== id));
-    showToast('Member removed.');
+  const handleUpdateMember = async (id: number, updates: Partial<Member>) => {
+    const updated = await StorageService.updateMemberApi(id, updates);
+    setMembers(updated);
+    showToast('Member profile updated in database.');
+  };
+
+  const handleDeleteMember = async (id: number) => {
+    const updated = await StorageService.deleteMemberApi(id);
+    setMembers(updated);
+    showToast('Member deleted from database.');
   };
 
   // 6. Sync Queue Handlers
   const triggerBackgroundSync = async () => {
     setIsSyncing(true);
     const res = await ApiSyncService.processQueue(config);
-    setIsSyncing(false);
     setQueuedItems(StorageService.getQueue());
-    if (res.syncedCount > 0) {
-      showToast(res.message);
+    setIsSyncing(false);
+
+    if (res.success) {
+      showToast('All pending offline transactions synced to Database!');
+    } else {
+      showToast('Sync paused - queued for reconnection.');
     }
   };
 
@@ -292,14 +290,14 @@ export default function App() {
     setDeposits(StorageService.getDeposits());
     setExpenses(StorageService.getExpenses());
     setQueuedItems([]);
-    showToast('Demo data restored for Rara Trip 2026!');
+    showToast('Reset all data to default demo state.');
   };
 
   return (
     <ThemeProvider theme={muiTheme}>
       <CssBaseline />
 
-      {/* Material UI Snackbar Notification */}
+      {/* Global Toast Notification */}
       <Snackbar
         open={Boolean(toast)}
         autoHideDuration={3000}
@@ -329,7 +327,7 @@ export default function App() {
         </Alert>
       </Snackbar>
 
-      {/* Authentication Gate: User must login with encrypted credentials to access the app */}
+      {/* Authentication Gate */}
       {!session ? (
         <LoginScreen
           onLoginSuccess={(newSession) => {
@@ -350,117 +348,112 @@ export default function App() {
             onLogout={() => {
               AuthService.logout();
               setSession(null);
-              showToast('Logged out of TripPool.');
             }}
             onOpenBackend={() => setIsBackendModalOpen(true)}
             onOpenExpenseModal={() => setIsExpenseModalOpen(true)}
           />
 
-          {/* Offline Alert Banner */}
+          {/* Offline / Mountain Mode Notice Banner */}
           <OfflineBanner
             isSimulatedOffline={config.isSimulatedOffline}
             queuedCount={queuedItems.length}
             onSyncNow={triggerBackgroundSync}
-            onToggleOffline={() => {
-              const toggled = !config.isSimulatedOffline;
-              setConfig({ ...config, isSimulatedOffline: toggled });
-              showToast(toggled ? 'Mountain Mode enabled' : 'Online Mode active');
-            }}
+            onToggleOffline={() => setConfig(prev => ({ ...prev, isSimulatedOffline: !prev.isSimulatedOffline }))}
             isSyncing={isSyncing}
           />
 
-      {/* Main Content Area with mobile safe bottom clearance */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 pt-3 sm:pt-6 pb-28 sm:pb-12">
-        {activeTab === 'dashboard' && (
-          <DashboardView
-            trip={trip}
-            members={members}
-            deposits={deposits}
-            expenses={expenses}
-            settlement={settlement}
-            onOpenExpenseModal={() => setIsExpenseModalOpen(true)}
-            onOpenDepositModal={() => setIsDepositModalOpen(true)}
+          {/* Main View Router */}
+          <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 py-4 sm:py-6 pb-24 md:pb-8">
+            {activeTab === 'dashboard' && (
+              <DashboardView
+                trip={trip}
+                members={members}
+                deposits={deposits}
+                expenses={expenses}
+                settlement={settlementResult}
+                onOpenExpenseModal={() => setIsExpenseModalOpen(true)}
+                onOpenDepositModal={() => setIsDepositModalOpen(true)}
+                setActiveTab={setActiveTab}
+              />
+            )}
+
+            {activeTab === 'expenses' && (
+              <ExpensesView
+                expenses={expenses}
+                members={members}
+                trip={trip}
+                onOpenExpenseModal={() => setIsExpenseModalOpen(true)}
+                onDeleteExpense={handleDeleteExpense}
+              />
+            )}
+
+            {activeTab === 'deposits' && (
+              <DepositsView
+                deposits={deposits}
+                members={members}
+                trip={trip}
+                onOpenDepositModal={() => setIsDepositModalOpen(true)}
+                onDeleteDeposit={handleDeleteDeposit}
+              />
+            )}
+
+            {activeTab === 'settlement' && (
+              <SettlementView
+                settlement={settlementResult}
+                trip={trip}
+                members={members}
+              />
+            )}
+
+            {activeTab === 'members' && (
+              <MembersView
+                trip={trip}
+                members={members}
+                onSaveTrip={handleSaveTrip}
+                onAddMember={handleAddMember}
+                onUpdateMember={handleUpdateMember}
+                onDeleteMember={handleDeleteMember}
+              />
+            )}
+          </main>
+
+          {/* Fixed Mobile Bottom Tab Bar */}
+          <BottomNav
+            activeTab={activeTab}
             setActiveTab={setActiveTab}
-          />
-        )}
-
-        {activeTab === 'expenses' && (
-          <ExpensesView
-            expenses={expenses}
-            members={members}
-            trip={trip}
             onOpenExpenseModal={() => setIsExpenseModalOpen(true)}
-            onDeleteExpense={handleDeleteExpense}
           />
-        )}
 
-        {activeTab === 'deposits' && (
-          <DepositsView
-            deposits={deposits}
+          {/* Modals & Dialogs */}
+          <ExpenseModal
+            isOpen={isExpenseModalOpen}
+            onClose={() => setIsExpenseModalOpen(false)}
             members={members}
-            trip={trip}
-            onOpenDepositModal={() => setIsDepositModalOpen(true)}
-            onDeleteDeposit={handleDeleteDeposit}
+            currency={trip.currency}
+            onSaveExpense={handleSaveExpense}
           />
-        )}
 
-        {activeTab === 'settlement' && (
-          <SettlementView
-            settlement={settlement}
-            trip={trip}
+          <DepositModal
+            isOpen={isDepositModalOpen}
+            onClose={() => setIsDepositModalOpen(false)}
             members={members}
+            currency={trip.currency}
+            onSaveDeposit={handleSaveDeposit}
           />
-        )}
 
-        {activeTab === 'members' && (
-          <MembersView
-            trip={trip}
-            members={members}
-            onSaveTrip={handleSaveTrip}
-            onAddMember={handleAddMember}
-            onUpdateMember={handleUpdateMember}
-            onDeleteMember={handleDeleteMember}
+          <BackendModal
+            isOpen={isBackendModalOpen}
+            onClose={() => setIsBackendModalOpen(false)}
+            config={config}
+            onUpdateConfig={setConfig}
+            queuedItems={queuedItems}
+            onTriggerSync={triggerBackgroundSync}
+            onResetData={handleResetData}
+            isSyncing={isSyncing}
           />
-        )}
-      </main>
 
-      {/* Mobile Bottom Tab Bar with Floating Action Button */}
-      <BottomNav
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        onOpenExpenseModal={() => setIsExpenseModalOpen(true)}
-      />
-
-      {/* Modals */}
-      <ExpenseModal
-        isOpen={isExpenseModalOpen}
-        onClose={() => setIsExpenseModalOpen(false)}
-        members={members}
-        currency={trip.currency}
-        onSaveExpense={handleSaveExpense}
-      />
-
-      <DepositModal
-        isOpen={isDepositModalOpen}
-        onClose={() => setIsDepositModalOpen(false)}
-        members={members}
-        currency={trip.currency}
-        onSaveDeposit={handleSaveDeposit}
-      />
-
-      <BackendModal
-        isOpen={isBackendModalOpen}
-        onClose={() => setIsBackendModalOpen(false)}
-        config={config}
-        onUpdateConfig={setConfig}
-        queuedItems={queuedItems}
-        onTriggerSync={triggerBackgroundSync}
-        onResetData={handleResetData}
-        isSyncing={isSyncing}
-      />
-
-      {/* Mobile Android App Install Prompt Popup */}
-      <PWAInstallPopup isOpenTriggered={Boolean(session)} />
+          {/* Mobile Android App Install Prompt Popup */}
+          <PWAInstallPopup isOpenTriggered={Boolean(session)} />
         </div>
       )}
     </ThemeProvider>

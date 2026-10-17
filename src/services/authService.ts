@@ -1,5 +1,6 @@
 import { AuthUser, AuthSession } from '../types';
 import { hashPassword, verifyPassword, generateToken } from '../utils/cryptoAuth';
+import { StorageService } from './storage';
 
 const AUTH_USERS_KEY = 'trippool_auth_users_v2';
 const AUTH_SESSION_KEY = 'trippool_auth_session_v1';
@@ -52,7 +53,6 @@ export const AuthService = {
   async init(): Promise<void> {
     if (isInitialized) return;
     try {
-      // Clear legacy v1 auth users if present
       localStorage.removeItem('trippool_auth_users_v1');
 
       let users = this.getUsers();
@@ -94,7 +94,6 @@ export const AuthService = {
         }
       ];
 
-      // Merge seed users if missing
       let modified = false;
       for (const seed of seedUsers) {
         const existingIdx = users.findIndex(u => u.email.toLowerCase() === seed.email.toLowerCase());
@@ -102,7 +101,6 @@ export const AuthService = {
           users.push(seed);
           modified = true;
         } else {
-          // Always ensure PBKDF2 hash is updated for seed accounts
           users[existingIdx].passwordHash = seed.passwordHash;
           users[existingIdx].passwordSalt = seed.passwordSalt;
           users[existingIdx].role = seed.role;
@@ -135,7 +133,6 @@ export const AuthService = {
       if (!raw) return null;
       const session: AuthSession = JSON.parse(raw);
       
-      // Enforce 24-hour session expiration
       const loginTime = new Date(session.loginAt).getTime();
       const now = Date.now();
       if (isNaN(loginTime) || now - loginTime > MAX_SESSION_AGE_MS) {
@@ -164,6 +161,36 @@ export const AuthService = {
       };
     }
 
+    // 1. Direct Server MySQL Database Authentication Attempt
+    try {
+      const apiBase = StorageService.getApiBase();
+      const endpoints = ['/api/login.php', '/api/auth/login'];
+      for (const ep of endpoints) {
+        try {
+          const apiRes = await fetch(`${apiBase}${ep}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: cleanEmail, password: passwordInput })
+          });
+          const contentType = apiRes.headers.get('content-type') || '';
+          if (apiRes.ok && contentType.includes('application/json')) {
+            const data = await apiRes.json();
+            if (data.success && data.session) {
+              clearAttempts(cleanEmail);
+              localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(data.session));
+              return { success: true, session: data.session };
+            } else if (data.error) {
+              recordFailedAttempt(cleanEmail);
+              return { success: false, error: data.error };
+            }
+          }
+        } catch {}
+      }
+    } catch (dbErr) {
+      console.warn('Backend database login notice:', dbErr);
+    }
+
+    // 2. Client PBKDF2 Local Verification Fallback
     let users = this.getUsers();
     let user = users.find(u => u.email.toLowerCase() === cleanEmail);
     
@@ -174,7 +201,6 @@ export const AuthService = {
 
     let isValid = await verifyPassword(passwordInput, user.passwordHash, user.passwordSalt);
     
-    // Self-healing fallback for seed credentials 'Trip@2026'
     if (!isValid && passwordInput === 'Trip@2026') {
       const freshPass = await hashPassword('Trip@2026');
       user.passwordHash = freshPass.hash;
@@ -202,7 +228,6 @@ export const AuthService = {
       };
     }
 
-    // Success -> Clear failed attempt history
     clearAttempts(cleanEmail);
 
     const session: AuthSession = {

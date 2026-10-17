@@ -1,12 +1,12 @@
 import { Trip, Member, Deposit, Expense, SyncQueueItem } from '../types';
 
 const STORAGE_KEYS = {
-  TRIP: 'trippool_trip_v1',
-  MEMBERS: 'trippool_members_v1',
-  DEPOSITS: 'trippool_deposits_v1',
-  EXPENSES: 'trippool_expenses_v1',
-  QUEUE: 'trippool_sync_queue_v1',
-  CONFIG: 'trippool_config_v1'
+  TRIP: 'trippool_trip_v2',
+  MEMBERS: 'trippool_members_v2',
+  DEPOSITS: 'trippool_deposits_v2',
+  EXPENSES: 'trippool_expenses_v2',
+  QUEUE: 'trippool_sync_queue_v2',
+  CONFIG: 'trippool_config_v2'
 };
 
 export interface AppConfig {
@@ -16,7 +16,7 @@ export interface AppConfig {
 }
 
 const DEFAULT_CONFIG: AppConfig = {
-  backendApiUrl: '', // empty means local-first / offline queue
+  backendApiUrl: '', // empty means auto-detect current root/subdirectory /api
   isSimulatedOffline: false,
   autoSync: true
 };
@@ -31,78 +31,10 @@ const DEFAULT_TRIP: Trip = {
   status: 'active'
 };
 
-const DEFAULT_MEMBERS: Member[] = [
-  { id: 1, trip_id: 1, name: 'Ramesh Sharma', phone: '+977-9841000001', notes: 'Trip Leader & Cash Custodian', is_leader: true, is_active: true },
-  { id: 2, trip_id: 1, name: 'Bikash Thapa', phone: '+977-9841000002', notes: 'Scout & Co-driver', is_leader: false, is_active: true },
-  { id: 3, trip_id: 1, name: 'Saurav Joshi', phone: '+977-9841000003', notes: 'Photographer', is_leader: false, is_active: true },
-  { id: 4, trip_id: 1, name: 'Ayush Shrestha', phone: '+977-9841000004', notes: 'Navigator', is_leader: false, is_active: true }
-];
-
-const DEFAULT_DEPOSITS: Deposit[] = [
-  { id: 1, trip_id: 1, member_id: 1, member_name: 'Ramesh Sharma', amount: 5000, payment_method: 'Cash', notes: 'Initial pool cash contribution', deposited_at: '2026-10-17T08:30:00' },
-  { id: 2, trip_id: 1, member_id: 2, member_name: 'Bikash Thapa', amount: 5000, payment_method: 'Fonepay', notes: 'Advance deposit via Fonepay QR', deposited_at: '2026-10-17T09:15:00' },
-  { id: 3, trip_id: 1, member_id: 3, member_name: 'Saurav Joshi', amount: 5000, payment_method: 'Bank Transfer', notes: 'Transferred to Leader Nabil Bank', deposited_at: '2026-10-17T10:00:00' },
-  { id: 4, trip_id: 1, member_id: 4, member_name: 'Ayush Shrestha', amount: 5000, payment_method: 'Fonepay', notes: 'Fonepay deposit', deposited_at: '2026-10-17T11:20:00' }
-];
-
-const DEFAULT_EXPENSES: Expense[] = [
-  {
-    id: 1,
-    trip_id: 1,
-    payer_type: 'pool',
-    payer_member_id: null,
-    payer_member_name: 'Trip Pool',
-    amount: 4000,
-    category: 'Fuel',
-    description: 'Scorpio diesel top-up at Kohalpur',
-    split_type: 'equal',
-    expense_date: '2026-10-17T14:00:00',
-    splits: [
-      { member_id: 1, member_name: 'Ramesh Sharma', split_amount: 1000 },
-      { member_id: 2, member_name: 'Bikash Thapa', split_amount: 1000 },
-      { member_id: 3, member_name: 'Saurav Joshi', split_amount: 1000 },
-      { member_id: 4, member_name: 'Ayush Shrestha', split_amount: 1000 }
-    ]
-  },
-  {
-    id: 2,
-    trip_id: 1,
-    payer_type: 'pool',
-    payer_member_id: null,
-    payer_member_name: 'Trip Pool',
-    amount: 1400,
-    category: 'Food & Snacks',
-    description: 'Mutton Thali & milk tea at Kalikot Dhaba',
-    split_type: 'equal',
-    expense_date: '2026-10-18T12:30:00',
-    splits: [
-      { member_id: 1, member_name: 'Ramesh Sharma', split_amount: 350 },
-      { member_id: 2, member_name: 'Bikash Thapa', split_amount: 350 },
-      { member_id: 3, member_name: 'Saurav Joshi', split_amount: 350 },
-      { member_id: 4, member_name: 'Ayush Shrestha', split_amount: 350 }
-    ]
-  },
-  {
-    id: 3,
-    trip_id: 1,
-    payer_type: 'member',
-    payer_member_id: 2,
-    payer_member_name: 'Bikash Thapa',
-    amount: 1200,
-    category: 'Vehicle Maintenance/Spares',
-    description: 'Tire puncture repair & spare valve tube (paid by Bikash)',
-    split_type: 'equal',
-    expense_date: '2026-10-18T16:45:00',
-    splits: [
-      { member_id: 1, member_name: 'Ramesh Sharma', split_amount: 300 },
-      { member_id: 2, member_name: 'Bikash Thapa', split_amount: 300 },
-      { member_id: 3, member_name: 'Saurav Joshi', split_amount: 300 },
-      { member_id: 4, member_name: 'Ayush Shrestha', split_amount: 300 }
-    ]
-  }
-];
-
 export class StorageService {
+  // -------------------------------------------------------------------
+  // Synchronous Local Cache Operations (100% Dynamic Database Mirror)
+  // -------------------------------------------------------------------
   static getTrip(): Trip {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.TRIP);
@@ -119,9 +51,9 @@ export class StorageService {
   static getMembers(): Member[] {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.MEMBERS);
-      return data ? JSON.parse(data) : DEFAULT_MEMBERS;
+      return data ? JSON.parse(data) : [];
     } catch {
-      return DEFAULT_MEMBERS;
+      return [];
     }
   }
 
@@ -132,9 +64,9 @@ export class StorageService {
   static getDeposits(): Deposit[] {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.DEPOSITS);
-      return data ? JSON.parse(data) : DEFAULT_DEPOSITS;
+      return data ? JSON.parse(data) : [];
     } catch {
-      return DEFAULT_DEPOSITS;
+      return [];
     }
   }
 
@@ -145,9 +77,9 @@ export class StorageService {
   static getExpenses(): Expense[] {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.EXPENSES);
-      return data ? JSON.parse(data) : DEFAULT_EXPENSES;
+      return data ? JSON.parse(data) : [];
     } catch {
-      return DEFAULT_EXPENSES;
+      return [];
     }
   }
 
@@ -204,10 +136,156 @@ export class StorageService {
   }
 
   static resetToDemo(): void {
-    localStorage.setItem(STORAGE_KEYS.TRIP, JSON.stringify(DEFAULT_TRIP));
-    localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(DEFAULT_MEMBERS));
-    localStorage.setItem(STORAGE_KEYS.DEPOSITS, JSON.stringify(DEFAULT_DEPOSITS));
-    localStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(DEFAULT_EXPENSES));
-    localStorage.setItem(STORAGE_KEYS.QUEUE, JSON.stringify([]));
+    localStorage.removeItem(STORAGE_KEYS.TRIP);
+    localStorage.removeItem(STORAGE_KEYS.MEMBERS);
+    localStorage.removeItem(STORAGE_KEYS.DEPOSITS);
+    localStorage.removeItem(STORAGE_KEYS.EXPENSES);
+    localStorage.removeItem(STORAGE_KEYS.QUEUE);
+  }
+
+  // -------------------------------------------------------------------
+  // Subdirectory-Aware Direct Database Async REST API Operations
+  // -------------------------------------------------------------------
+  static getApiBase(): string {
+    const cfg = this.getConfig();
+    if (cfg.backendApiUrl && cfg.backendApiUrl.trim() !== '') {
+      return cfg.backendApiUrl.replace(/\/$/, '');
+    }
+    // Auto-detect origin and active subdirectory
+    if (typeof window !== 'undefined' && window.location) {
+      const path = window.location.pathname.replace(/\/[^\/]*$/, '');
+      return `${window.location.origin}${path}`.replace(/\/$/, '');
+    }
+    return '';
+  }
+
+  private static async fetchApiJson(endpoint: string, options?: RequestInit): Promise<any> {
+    const base = this.getApiBase();
+    
+    // 1. Direct cPanel PHP endpoint attempt
+    try {
+      let phpEndpoint = endpoint;
+      if (endpoint.startsWith('/api/members')) {
+        phpEndpoint = endpoint.replace('/api/members', '/api/members.php');
+      } else if (endpoint.startsWith('/api/expenses')) {
+        phpEndpoint = endpoint.replace('/api/expenses', '/api/expenses.php');
+      } else if (endpoint.startsWith('/api/deposits')) {
+        phpEndpoint = endpoint.replace('/api/deposits', '/api/deposits.php');
+      } else if (endpoint.startsWith('/api/trips')) {
+        phpEndpoint = endpoint.replace('/api/trips', '/api/trips.php');
+      } else if (endpoint.startsWith('/api/auth/login')) {
+        phpEndpoint = '/api/login.php';
+      }
+
+      const resPhp = await fetch(`${base}${phpEndpoint}`, options);
+      const contentTypePhp = resPhp.headers.get('content-type') || '';
+      if (resPhp.ok && contentTypePhp.includes('application/json')) {
+        return await resPhp.json();
+      }
+    } catch (err) {
+      console.warn(`PHP Endpoint fetch notice for ${endpoint}:`, err);
+    }
+
+    // 2. Standard REST API endpoint attempt (Node Express or Apache Rewritten)
+    try {
+      const res = await fetch(`${base}${endpoint}`, options);
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok && contentType.includes('application/json')) {
+        return await res.json();
+      }
+    } catch (e) {
+      console.warn(`Standard API fetch notice for ${endpoint}:`, e);
+    }
+
+    return null;
+  }
+
+  static async fetchMembersFromApi(): Promise<Member[]> {
+    const data = await this.fetchApiJson('/api/members');
+    if (Array.isArray(data)) {
+      this.saveMembers(data);
+      return data;
+    }
+    return this.getMembers();
+  }
+
+  static async addMemberApi(memberData: { name: string; phone?: string; notes?: string; is_leader: boolean }): Promise<Member[]> {
+    await this.fetchApiJson('/api/members', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(memberData)
+    });
+    return this.fetchMembersFromApi();
+  }
+
+  static async updateMemberApi(id: number, memberData: Partial<Member>): Promise<Member[]> {
+    await this.fetchApiJson(`/api/members/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(memberData)
+    });
+    return this.fetchMembersFromApi();
+  }
+
+  static async deleteMemberApi(id: number): Promise<Member[]> {
+    await this.fetchApiJson(`/api/members/${id}`, {
+      method: 'DELETE'
+    });
+    return this.fetchMembersFromApi();
+  }
+
+  static async fetchExpensesFromApi(): Promise<Expense[]> {
+    const data = await this.fetchApiJson('/api/expenses');
+    if (Array.isArray(data)) {
+      this.saveExpenses(data);
+      return data;
+    }
+    return this.getExpenses();
+  }
+
+  static async addExpenseApi(expenseData: any): Promise<Expense[]> {
+    await this.fetchApiJson('/api/expenses', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(expenseData)
+    });
+    return this.fetchExpensesFromApi();
+  }
+
+  static async deleteExpenseApi(id: number): Promise<Expense[]> {
+    await this.fetchApiJson(`/api/expenses/${id}`, { method: 'DELETE' });
+    return this.fetchExpensesFromApi();
+  }
+
+  static async fetchDepositsFromApi(): Promise<Deposit[]> {
+    const data = await this.fetchApiJson('/api/deposits');
+    if (Array.isArray(data)) {
+      this.saveDeposits(data);
+      return data;
+    }
+    return this.getDeposits();
+  }
+
+  static async addDepositApi(depositData: any): Promise<Deposit[]> {
+    await this.fetchApiJson('/api/deposits', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(depositData)
+    });
+    return this.fetchDepositsFromApi();
+  }
+
+  static async deleteDepositApi(id: number): Promise<Deposit[]> {
+    await this.fetchApiJson(`/api/deposits/${id}`, { method: 'DELETE' });
+    return this.fetchDepositsFromApi();
+  }
+
+  static async fetchTripFromApi(): Promise<Trip> {
+    const data = await this.fetchApiJson('/api/trips');
+    if (data && data.title) {
+      this.saveTrip(data);
+      return data;
+    }
+    return this.getTrip();
   }
 }
