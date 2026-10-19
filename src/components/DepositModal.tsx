@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Dialog from '@mui/material/Dialog';
 import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
@@ -21,14 +21,17 @@ import QrCode2Icon from '@mui/icons-material/QrCode2';
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
 import CreditCardIcon from '@mui/icons-material/CreditCard';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
-import { Member, PaymentMethod } from '../types';
+import { Member, Deposit, PaymentMethod } from '../types';
+import { MemberAvatar } from './MemberAvatar';
 
 interface DepositModalProps {
   isOpen: boolean;
   onClose: () => void;
   members: Member[];
   currency: string;
+  editingDeposit?: Deposit | null;
   onSaveDeposit: (depositData: {
+    id?: number;
     member_id: number;
     amount: number;
     payment_method: PaymentMethod;
@@ -44,11 +47,25 @@ const METHODS: { label: PaymentMethod; icon: React.ReactNode; desc: string }[] =
   { label: 'Other', icon: <CreditCardIcon fontSize="small" sx={{ color: '#64748b' }} />, desc: 'Other payment option' },
 ];
 
+function toDatetimeLocalValue(dateStr?: string): string {
+  if (!dateStr) {
+    const now = new Date();
+    const tzOffset = now.getTimezoneOffset() * 60000;
+    return new Date(now.getTime() - tzOffset).toISOString().substring(0, 16);
+  }
+  const normalized = dateStr.replace(' ', 'T');
+  if (normalized.length >= 16) {
+    return normalized.substring(0, 16);
+  }
+  return new Date().toISOString().substring(0, 16);
+}
+
 export const DepositModal: React.FC<DepositModalProps> = ({
   isOpen,
   onClose,
   members,
   currency,
+  editingDeposit,
   onSaveDeposit
 }) => {
   const activeMembers = members.filter(m => m.is_active);
@@ -57,9 +74,24 @@ export const DepositModal: React.FC<DepositModalProps> = ({
   const [amountStr, setAmountStr] = useState<string>('5000');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Cash');
   const [notes, setNotes] = useState<string>('Initial pool contribution');
-  const [depositedAt, setDepositedAt] = useState<string>(
-    new Date().toISOString().substring(0, 16)
-  );
+  const [depositedAt, setDepositedAt] = useState<string>(() => toDatetimeLocalValue());
+
+  useEffect(() => {
+    if (!isOpen) return;
+    if (editingDeposit) {
+      setMemberId(editingDeposit.member_id);
+      setAmountStr(String(editingDeposit.amount));
+      setPaymentMethod(editingDeposit.payment_method);
+      setNotes(editingDeposit.notes || '');
+      setDepositedAt(toDatetimeLocalValue(editingDeposit.deposited_at));
+    } else {
+      setMemberId(activeMembers[0]?.id || 1);
+      setAmountStr('5000');
+      setPaymentMethod('Cash');
+      setNotes('Initial pool contribution');
+      setDepositedAt(toDatetimeLocalValue());
+    }
+  }, [isOpen, editingDeposit, members.length]);
 
   const amount = parseFloat(amountStr) || 0;
 
@@ -67,12 +99,17 @@ export const DepositModal: React.FC<DepositModalProps> = ({
     e.preventDefault();
     if (amount <= 0 || !memberId) return;
 
+    const cleanDateStr = depositedAt
+      ? depositedAt.replace('T', ' ') + (depositedAt.length === 16 ? ':00' : '')
+      : new Date().toISOString().replace('T', ' ').substring(0, 19);
+
     onSaveDeposit({
+      ...(editingDeposit ? { id: editingDeposit.id } : {}),
       member_id: memberId,
       amount,
       payment_method: paymentMethod,
       notes: notes.trim() || undefined,
-      deposited_at: depositedAt ? new Date(depositedAt).toISOString() : new Date().toISOString()
+      deposited_at: cleanDateStr
     });
 
     onClose();
@@ -84,31 +121,33 @@ export const DepositModal: React.FC<DepositModalProps> = ({
       onClose={onClose}
       maxWidth="sm"
       fullWidth
+      scroll="paper"
       slotProps={{
         paper: {
+          component: 'form',
+          onSubmit: handleSubmit,
           sx: {
             borderRadius: { xs: '24px 24px 0 0', sm: 4 },
             m: { xs: 0, sm: 2 },
-            position: { xs: 'fixed', sm: 'relative' },
-            bottom: { xs: 0, sm: 'auto' },
-            maxHeight: { xs: '94vh', sm: '90vh' },
+            maxHeight: { xs: '90dvh', sm: '90vh' },
             width: { xs: '100%', sm: 'auto' },
+            alignSelf: { xs: 'flex-end', sm: 'center' },
           },
-        },
+        } as any,
       }}
     >
       {/* Mobile drag handle */}
-      <Box sx={{ display: { xs: 'flex', sm: 'none' }, justifyContent: 'center', pt: 1.25, pb: 0 }}>
+      <Box sx={{ display: { xs: 'flex', sm: 'none' }, justifyContent: 'center', pt: 1.25, pb: 0, flexShrink: 0 }}>
         <Box sx={{ width: 44, height: 4, borderRadius: 2, bgcolor: '#cbd5e1' }} />
       </Box>
 
-      <DialogTitle sx={{ m: 0, p: { xs: 2, sm: 2.5 }, pb: 1.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <DialogTitle sx={{ m: 0, p: { xs: 2, sm: 2.5 }, pb: 1.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
         <Box>
           <Typography variant="h6" sx={{ fontWeight: 800, fontSize: { xs: '1.05rem', sm: '1.15rem' } }}>
-            Record Pool Deposit
+            {editingDeposit ? 'Edit Pool Deposit' : 'Record Pool Deposit'}
           </Typography>
           <Typography variant="caption" sx={{ color: '#64748b' }}>
-            Collect advance float or rolling top-up fund from friend
+            {editingDeposit ? 'Update deposit details in the database' : 'Collect advance float or rolling top-up fund from friend'}
           </Typography>
         </Box>
         <IconButton
@@ -121,21 +160,23 @@ export const DepositModal: React.FC<DepositModalProps> = ({
         </IconButton>
       </DialogTitle>
 
-      <form onSubmit={handleSubmit}>
-        <DialogContent dividers sx={{ p: { xs: 2, sm: 2.5 }, display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <DialogContent dividers sx={{ p: { xs: 2, sm: 2.5 }, display: 'flex', flexDirection: 'column', gap: 2, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
           {/* Member Selector */}
           <FormControl fullWidth size="small">
             <InputLabel id="deposit-member-label">Who is Depositing Money?</InputLabel>
             <Select
               labelId="deposit-member-label"
-              value={memberId}
+              value={activeMembers.some(m => m.id === memberId) ? memberId : (activeMembers[0]?.id || '')}
               label="Who is Depositing Money?"
               onChange={(e) => setMemberId(Number(e.target.value))}
               sx={{ borderRadius: 2.5 }}
             >
               {activeMembers.map((m) => (
                 <MenuItem key={m.id} value={m.id}>
-                  {m.name} {m.is_leader ? '(Leader / Custodian)' : ''}
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <MemberAvatar member={m} size="xs" showLeaderBadge />
+                    <span>{m.name} {m.is_leader ? '(Leader / Custodian)' : ''}</span>
+                  </Box>
                 </MenuItem>
               ))}
             </Select>
@@ -151,6 +192,10 @@ export const DepositModal: React.FC<DepositModalProps> = ({
               onChange={(e) => setAmountStr(e.target.value)}
               placeholder="5000"
               slotProps={{
+                htmlInput: {
+                  inputMode: 'decimal',
+                  step: 'any',
+                },
                 input: {
                   startAdornment: (
                     <InputAdornment position="start">
@@ -248,7 +293,7 @@ export const DepositModal: React.FC<DepositModalProps> = ({
           </Box>
         </DialogContent>
 
-        <DialogActions sx={{ p: { xs: 2, sm: 2.5 }, pt: 1.5, pb: 'calc(env(safe-area-inset-bottom, 0px) + 12px)', display: 'flex', gap: 1 }}>
+        <DialogActions sx={{ p: { xs: 2, sm: 2.5 }, pt: 1.5, pb: 'calc(env(safe-area-inset-bottom, 0px) + 12px)', display: 'flex', gap: 1, flexShrink: 0 }}>
           <Button onClick={onClose} color="inherit" sx={{ fontWeight: 600, py: 1, px: 2 }}>
             Cancel
           </Button>
@@ -260,10 +305,9 @@ export const DepositModal: React.FC<DepositModalProps> = ({
             startIcon={<ArrowDownwardIcon fontSize="small" />}
             sx={{ flex: 1, py: 1.25, fontWeight: 800, borderRadius: 2.5 }}
           >
-            Record Deposit ({currency} {amount.toLocaleString()})
+            {editingDeposit ? `Save Changes (${currency} ${amount.toLocaleString()})` : `Record Deposit (${currency} ${amount.toLocaleString()})`}
           </Button>
         </DialogActions>
-      </form>
     </Dialog>
   );
 };

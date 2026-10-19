@@ -60,12 +60,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
     }
   };
 
-  const handleApplyPreset = (presetEmail: string, presetPass: string) => {
-    setEmail(presetEmail);
-    setPassword(presetPass);
-    setErrorMessage(null);
-  };
-
   return (
     <Box
       sx={{
@@ -251,7 +245,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
         </Card>
 
         {/* Footer info */}
-        <Box sx={{ mt: 3, textAlign: 'center' }}>
+        <Box sx={{ mt: 3, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.25 }}>
           <Typography variant="caption" sx={{ color: '#64748b', fontSize: '0.72rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.75 }}>
             <DirectionsCarIcon sx={{ fontSize: 15 }} />
             Nepal Roadtrip & Overland Float Fund Manager

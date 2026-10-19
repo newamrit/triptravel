@@ -25,9 +25,8 @@ export const ReceiptViewerModal: React.FC<ReceiptViewerModalProps> = ({
   title = 'Receipt Photo',
   subtitle
 }) => {
-  if (!imageUrl) return null;
-
   const handleDownload = () => {
+    if (!imageUrl) return;
     const a = document.createElement('a');
     a.href = imageUrl;
     a.download = `receipt_${Date.now()}.jpg`;
@@ -38,18 +37,20 @@ export const ReceiptViewerModal: React.FC<ReceiptViewerModalProps> = ({
 
   return (
     <Dialog
-      open={isOpen}
+      open={Boolean(isOpen && imageUrl)}
       onClose={onClose}
       maxWidth="md"
       fullWidth
+      scroll="paper"
+      disableScrollLock
       slotProps={{
         paper: {
           sx: {
             borderRadius: { xs: '20px 20px 0 0', sm: 3.5 },
             m: { xs: 0, sm: 2 },
-            position: { xs: 'fixed', sm: 'relative' },
-            bottom: { xs: 0, sm: 'auto' },
-            maxHeight: '92vh',
+            maxHeight: { xs: '90dvh', sm: '90vh' },
+            width: { xs: '100%', sm: 'auto' },
+            alignSelf: { xs: 'flex-end', sm: 'center' },
             bgcolor: '#0f172a',
             color: '#ffffff',
           },
@@ -123,18 +124,20 @@ export const ReceiptViewerModal: React.FC<ReceiptViewerModalProps> = ({
             p: 1,
           }}
         >
-          <Box
-            component="img"
-            src={imageUrl}
-            alt="Physical Receipt"
-            sx={{
-              maxWidth: '100%',
-              maxHeight: '68vh',
-              objectFit: 'contain',
-              borderRadius: 1.5,
-              boxShadow: '0 8px 30px rgba(0,0,0,0.5)',
-            }}
-          />
+          {imageUrl && (
+            <Box
+              component="img"
+              src={imageUrl}
+              alt="Physical Receipt"
+              sx={{
+                maxWidth: '100%',
+                maxHeight: '68vh',
+                objectFit: 'contain',
+                borderRadius: 1.5,
+                boxShadow: '0 8px 30px rgba(0,0,0,0.5)',
+              }}
+            />
+          )}
         </Box>
 
         <Box sx={{ display: { xs: 'flex', sm: 'none' }, width: '100%', mt: 1.5, justifyContent: 'center' }}>

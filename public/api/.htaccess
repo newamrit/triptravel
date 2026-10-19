@@ -1,0 +1,50 @@
+# ============================================================================
+# TripPool Nepal — API Directory Security & Routing (public_html/api/.htaccess)
+# ============================================================================
+
+<IfModule mod_negotiation.c>
+  Options -MultiViews -Indexes
+</IfModule>
+
+# 1. Block direct HTTP browser access to internal database config/helper files
+#    (PHP require_once inside login.php, trips.php, etc. still works normally)
+<FilesMatch "^(db|db_config)\.php$">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+  </IfModule>
+</FilesMatch>
+
+# 2. Protect any .env, .sql, or .log files inside /api/
+<FilesMatch "(\.env.*|\.sql|\.log|\.ini)$">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+  </IfModule>
+</FilesMatch>
+
+# 3. Self-contained extensionless routing inside /api/
+#    Works even if the root public_html/.htaccess was not uploaded or overridden
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  # Pass Authorization headers to PHP under CGI/FastCGI/LiteSpeed
+  RewriteCond %{HTTP:Authorization} .
+  RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+  # CORS preflight
+  RewriteCond %{REQUEST_METHOD} OPTIONS
+  RewriteRule ^(.*)$ $1 [R=200,L]
+
+  # Map /api/trips -> /api/trips.php if requested without .php
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME}.php -f
+  RewriteRule ^([a-zA-Z0-9_-]+)/?$ $1.php [L,QSA]
+</IfModule>

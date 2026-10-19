@@ -1,15 +1,70 @@
+# Apache .htaccess configuration for cPanel Shared Hosting (SPA + PHP/MySQL REST API)
+# TripPool Nepal - 100% Database-Driven Shared Travel Expense Manager
+
 <IfModule mod_rewrite.c>
   RewriteEngine On
-  RewriteBase /
-  
-  # Allow direct access to existing files and directories (like assets/ and api/)
+
+  # 1. Explicit Bypass for debug.php and ANY .php script FIRST so Apache executes PHP directly
+  RewriteCond %{REQUEST_URI} \.php [NC]
+  RewriteRule ^ - [L]
+
+  # 2. cPanel Apache API Endpoint Rewrites (Routes extensionless /api/* to api/*.php)
+  RewriteRule ^debug/?$ debug.php [L,QSA]
+  RewriteRule ^api/debug/?$ debug.php [L,QSA]
+  RewriteRule ^api/health/?$ api/health.php [L,QSA]
+  RewriteRule ^api/sync/?$ api/sync.php [L,QSA]
+
+  RewriteRule ^api/members/?$ api/members.php [L,QSA]
+  RewriteRule ^api/members/([0-9]+)/?$ api/members.php?id=$1 [L,QSA]
+
+  RewriteRule ^api/expenses/?$ api/expenses.php [L,QSA]
+  RewriteRule ^api/expenses/([0-9]+)/?$ api/expenses.php?id=$1 [L,QSA]
+
+  RewriteRule ^api/deposits/?$ api/deposits.php [L,QSA]
+  RewriteRule ^api/deposits/([0-9]+)/?$ api/deposits.php?id=$1 [L,QSA]
+
+  RewriteRule ^api/trips/?$ api/trips.php [L,QSA]
+  RewriteRule ^api/trips/([0-9]+)/?$ api/trips.php?id=$1 [L,QSA]
+
+  RewriteRule ^api/auth/login/?$ api/login.php [L,QSA]
+  RewriteRule ^api/auth/register/?$ api/login.php?action=register [L,QSA]
+
+  # 3. Serve existing static files and directories directly
   RewriteCond %{REQUEST_FILENAME} -f [OR]
   RewriteCond %{REQUEST_FILENAME} -d
   RewriteRule ^ - [L]
 
-  # Don't rewrite calls to the PHP API
-  RewriteRule ^api/ - [L]
-
-  # Route all other frontend requests to the static index.html
+  # 4. SPA Fallback Routing for React (non-PHP, non-API, non-debug routes only)
+  RewriteCond %{REQUEST_URI} !\.php [NC]
+  RewriteCond %{REQUEST_URI} !/api/ [NC]
+  RewriteCond %{REQUEST_URI} !debug [NC]
   RewriteRule ^ index.html [L]
+</IfModule>
+
+# Disable Directory Browsing
+Options -Indexes
+
+# Protect .env and .sql files from public browser access
+<FilesMatch "^(\.env|.*\.sql)$">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+  </IfModule>
+</FilesMatch>
+
+# Security & Cache Control Headers
+<IfModule mod_headers.c>
+  Header set X-Frame-Options "SAMEORIGIN"
+  Header set X-Content-Type-Options "nosniff"
+  Header set Referrer-Policy "strict-origin-when-cross-origin"
+
+  # Never cache HTML, PHP, or Service Worker files so updates & debug.php work immediately
+  <FilesMatch "\.(html|php|webmanifest)$|^sw\.js$|^registerSW\.js$">
+    Header set Cache-Control "no-cache, no-store, must-revalidate, max-age=0"
+    Header set Pragma "no-cache"
+    Header set Expires 0
+  </FilesMatch>
 </IfModule>

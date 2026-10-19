@@ -26,13 +26,11 @@ export const PWAInstallPopup: React.FC<PWAInstallPopupProps> = ({ isOpenTriggere
   const [installedSuccess, setInstalledSuccess] = useState(false);
 
   useEffect(() => {
-    // Show prompt when user is on mobile/desktop, app is NOT installed, and hasn't been dismissed in this session
+    // Show prompt when user is on mobile or installable PWA, app is NOT installed, and hasn't been dismissed in this session
     const dismissed = sessionStorage.getItem('trippool_pwa_dismissed');
     
-    if (!isInstalled && !dismissed) {
-      // Automatically open prompt if installable OR triggered upon login
-      if (isInstallable || isIOS || isOpenTriggered || isMobile) {
-        // Small delay after login so UI renders smoothly
+    if (!isInstalled && !dismissed && isOpenTriggered) {
+      if (isInstallable || isIOS || isMobile) {
         const timer = setTimeout(() => {
           setIsOpen(true);
         }, 600);
@@ -49,7 +47,6 @@ export const PWAInstallPopup: React.FC<PWAInstallPopupProps> = ({ isOpenTriggere
         setTimeout(() => setIsOpen(false), 2000);
       }
     } else {
-      // Native browser trigger fallback
       sessionStorage.setItem('trippool_pwa_dismissed', 'true');
       setIsOpen(false);
     }
@@ -60,28 +57,27 @@ export const PWAInstallPopup: React.FC<PWAInstallPopupProps> = ({ isOpenTriggere
     setIsOpen(false);
   };
 
-  if (isInstalled || (!isOpen && !isOpenTriggered)) {
-    return null;
-  }
-
   return (
     <Dialog
-      open={isOpen}
+      open={!isInstalled && isOpen}
       onClose={handleDismiss}
       maxWidth="xs"
       fullWidth
+      scroll="paper"
+      disableScrollLock
       slotProps={{
         paper: {
           sx: {
             borderRadius: { xs: '24px 24px 0 0', sm: 4 },
             m: { xs: 0, sm: 2 },
-            position: { xs: 'fixed', sm: 'relative' },
-            bottom: { xs: 0, sm: 'auto' },
+            maxHeight: { xs: '90dvh', sm: '88vh' },
+            width: { xs: '100%', sm: 'auto' },
+            alignSelf: { xs: 'flex-end', sm: 'center' },
             bgcolor: '#0f172a',
             color: '#ffffff',
             border: '1px solid rgba(51, 65, 85, 0.8)',
             boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.6)',
-            overflow: 'hidden',
+            overflowY: 'auto',
           },
         },
       }}
@@ -114,7 +110,7 @@ export const PWAInstallPopup: React.FC<PWAInstallPopupProps> = ({ isOpenTriggere
             <Box sx={{ display: 'inline-flex', position: 'relative', mb: 2 }}>
               <Box
                 component="img"
-                src="/pwa-192x192.png"
+                src="./pwa-192x192.png"
                 alt="TripPool App Icon"
                 sx={{
                   width: 72,

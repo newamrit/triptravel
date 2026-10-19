@@ -9,7 +9,7 @@ export type ExpenseCategory =
   | 'Miscellaneous';
 
 export type PayerType = 'pool' | 'member';
-export type SplitType = 'equal' | 'custom';
+export type SplitType = 'equal' | 'custom' | 'exact' | 'shares';
 
 export interface Trip {
   id: number;
@@ -19,6 +19,7 @@ export interface Trip {
   start_date: string;
   end_date: string;
   status: 'active' | 'completed' | 'archived';
+  total_budget?: number;
 }
 
 export interface Member {
@@ -27,6 +28,7 @@ export interface Member {
   name: string;
   phone?: string | null;
   notes?: string | null;
+  avatar?: string | null;
   is_leader: boolean;
   is_active: boolean;
   total_deposited?: number;
@@ -52,6 +54,7 @@ export interface ExpenseSplit {
   member_id: number;
   member_name?: string;
   split_amount: number;
+  shares?: number;
 }
 
 export interface Expense {

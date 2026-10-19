@@ -1,23 +1,179 @@
 @import "tailwindcss";
 
-html, body {
-  font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  overflow-x: hidden;
+@theme {
+  --font-sans: 'DM Sans', 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-display: 'Outfit', 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+:root {
+  --font-sans: 'DM Sans', 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-display: 'Outfit', 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-top: env(safe-area-inset-top, 0px);
+}
+
+html {
+  font-size: 16px;
+  -webkit-text-size-adjust: 100%;
+  font-optical-sizing: auto;
+  overflow-y: auto !important;
+  height: auto !important;
+}
+
+body {
+  font-family: var(--font-sans);
+  margin: 0;
+  padding: 0 !important;
+  min-height: 100vh;
+  height: auto !important;
+  overflow-y: visible !important;
+  overflow-x: clip;
+  -webkit-overflow-scrolling: touch;
   -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
-  letter-spacing: -0.01em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  letter-spacing: 0.005em;
+  line-height: 1.6;
+  color: #0f172a;
+  background-color: #f8fafc;
 }
 
-/* JetBrains Mono font for financial digits & currency amounts */
-.font-mono, [style*="fontFamily: 'monospace'"], [style*='fontFamily: "monospace"'] {
-  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow-x: clip;
 }
 
-/* Hide scrollbar for clean horizontal chips scrolling on touch devices */
+/* Elegant Display Headings (Outfit + Plus Jakarta Sans) */
+h1, h2, h3, h4, h5, h6,
+.MuiTypography-h3,
+.MuiTypography-h4,
+.MuiTypography-h5,
+.MuiTypography-h6,
+.MuiDialogTitle-root {
+  font-family: var(--font-display) !important;
+  letter-spacing: -0.015em !important;
+  text-wrap: balance;
+}
+
+/* Clean, Highly Readable Body, Subtitle & Caption Prose (DM Sans) */
+body, p, span, div, button, input, select, textarea,
+.MuiTypography-body1,
+.MuiTypography-body2,
+.MuiTypography-subtitle1,
+.MuiTypography-subtitle2,
+.MuiTypography-caption,
+.MuiTypography-overline,
+.MuiButton-root,
+.MuiTab-root,
+.MuiChip-label,
+.MuiInputBase-input,
+.MuiFormLabel-root {
+  font-family: var(--font-sans);
+  font-optical-sizing: auto;
+}
+
+/* Improve small caption & metadata readability across mobile and desktop */
+.MuiTypography-caption {
+  letter-spacing: 0.01em !important;
+  line-height: 1.5 !important;
+}
+
+.MuiTypography-subtitle1,
+.MuiTypography-subtitle2 {
+  letter-spacing: -0.005em !important;
+  line-height: 1.45 !important;
+}
+
+/* Crisp Tabular Numerals for Financial Amounts, Balances & Metrics */
+.font-mono,
+code,
+pre,
+.tabular-nums,
+[style*="monospace"] {
+  font-family: var(--font-mono) !important;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  letter-spacing: -0.02em;
+}
+
+/* Prevent iOS Safari / Android Chrome forced zoom on input focus while keeping crisp layout */
+@media (max-width: 640px) {
+  input,
+  select,
+  textarea,
+  .MuiInputBase-input {
+    font-size: 16px !important;
+  }
+}
+
+/* Tactile press feedback for touch buttons and cards */
+.MuiButton-root:active,
+.MuiIconButton-root:active,
+.MuiChip-clickable:active {
+  transform: scale(0.97);
+  transition: transform 0.1s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Clean horizontal scrolling on touch devices */
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
 .no-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Loading & View Transition Keyframes */
+@keyframes trippoolFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes trippoolPulseRing {
+  0% {
+    transform: scale(0.92);
+    opacity: 0.75;
+  }
+  70% {
+    transform: scale(1.22);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1.22);
+    opacity: 0;
+  }
+}
+
+@keyframes trippoolShimmerBar {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(260%);
+  }
+}
+
+@keyframes trippoolSlideUpFade {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.view-transition-enter {
+  animation: trippoolSlideUpFade 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 }

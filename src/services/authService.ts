@@ -63,16 +63,6 @@ export const AuthService = {
 
       const seedUsers: AuthUser[] = [
         {
-          id: 'user_leader_1',
-          email: 'leader@trippool.app',
-          name: 'Ramesh Sharma',
-          role: 'leader',
-          member_id: 1,
-          passwordHash: leaderPass.hash,
-          passwordSalt: leaderPass.salt,
-          createdAt: new Date().toISOString()
-        },
-        {
           id: 'user_amrit',
           email: 'amrit.timilsinaa@gmail.com',
           name: 'Amrit Timilsina',
@@ -83,11 +73,51 @@ export const AuthService = {
           createdAt: new Date().toISOString()
         },
         {
+          id: 'user_leader_1',
+          email: 'leader@trippool.app',
+          name: 'Amrit Timilsina',
+          role: 'leader',
+          member_id: 1,
+          passwordHash: leaderPass.hash,
+          passwordSalt: leaderPass.salt,
+          createdAt: new Date().toISOString()
+        },
+        {
           id: 'user_member_2',
           email: 'bikash@trippool.app',
           name: 'Bikash Thapa',
           role: 'member',
           member_id: 2,
+          passwordHash: memberPass.hash,
+          passwordSalt: memberPass.salt,
+          createdAt: new Date().toISOString()
+        },
+        {
+          id: 'user_member_3',
+          email: 'saurav@trippool.app',
+          name: 'Saurav Joshi',
+          role: 'member',
+          member_id: 3,
+          passwordHash: memberPass.hash,
+          passwordSalt: memberPass.salt,
+          createdAt: new Date().toISOString()
+        },
+        {
+          id: 'user_member_4',
+          email: 'ayush@trippool.app',
+          name: 'Ayush Shrestha',
+          role: 'member',
+          member_id: 4,
+          passwordHash: memberPass.hash,
+          passwordSalt: memberPass.salt,
+          createdAt: new Date().toISOString()
+        },
+        {
+          id: 'user_member_5',
+          email: 'prashant@trippool.app',
+          name: 'Prashant Karki',
+          role: 'member',
+          member_id: 5,
           passwordHash: memberPass.hash,
           passwordSalt: memberPass.salt,
           createdAt: new Date().toISOString()
@@ -272,6 +302,39 @@ export const AuthService = {
 
     if (!data.password || data.password.length < 6) {
       return { success: false, error: 'Password must be at least 6 characters long.' };
+    }
+
+    // 1. Direct Server MySQL Database Registration Attempt
+    try {
+      const apiBase = StorageService.getApiBase();
+      const endpoints = ['/api/login.php?action=register', '/api/auth/register'];
+      for (const ep of endpoints) {
+        try {
+          const apiRes = await fetch(`${apiBase}${ep}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'register',
+              email: cleanEmail,
+              name: cleanName,
+              password: data.password,
+              role: data.role
+            })
+          });
+          const contentType = apiRes.headers.get('content-type') || '';
+          if (contentType.includes('application/json')) {
+            const resData = await apiRes.json();
+            if (apiRes.ok && resData.success && resData.session) {
+              localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(resData.session));
+              return { success: true, session: resData.session };
+            } else if (resData.error) {
+              return { success: false, error: resData.error };
+            }
+          }
+        } catch {}
+      }
+    } catch (dbErr) {
+      console.warn('Backend database register notice:', dbErr);
     }
 
     const users = this.getUsers();

@@ -2,18 +2,70 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#0f172a" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="TripPool" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <link rel="icon" type="image/svg+xml" href="./icon.svg" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+    <link rel="manifest" href="./manifest.webmanifest" />
     <title>TripPool - Group Trip & Float Fund Expense Manager</title>
     <meta name="description" content="Mobile-first offline expense management app for group trips with float pool funds, rolling deposits, smart split calculations, and debt settlement." />
     <meta property="og:title" content="TripPool - Group Trip & Float Fund Expense Manager" />
     <meta property="og:description" content="Mobile-first offline expense management app for group trips with float pool funds, rolling deposits, smart split calculations, and debt settlement." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
-    <script type="module" crossorigin src="./assets/index-BidYiyV6.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-CNpjca0Q.css">
+
+    <!-- Google Fonts: Outfit (Display), DM Sans & Plus Jakarta Sans (High-Legibility Body), JetBrains Mono (Tabular Numerals) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400..700;1,9..40,400..700&family=JetBrains+Mono:wght@500;600;700&family=Outfit:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <script>
+      (function () {
+        if (!('serviceWorker' in navigator)) return;
+        var path = window.location.pathname.toLowerCase();
+        var search = window.location.search.toLowerCase();
+        if (path.indexOf('.php') !== -1 || search.indexOf('debug=') !== -1) {
+          navigator.serviceWorker.getRegistrations().then(function (regs) {
+            var hadRegs = regs && regs.length > 0;
+            Promise.all(regs.map(function (r) { return r.unregister(); })).then(function () {
+              if ('caches' in window) {
+                caches.keys().then(function (keys) {
+                  return Promise.all(keys.map(function (k) { return caches.delete(k); }));
+                }).then(function () {
+                  if (hadRegs && !sessionStorage.getItem('trippool_php_reloaded')) {
+                    sessionStorage.setItem('trippool_php_reloaded', '1');
+                    window.location.reload();
+                  }
+                });
+              }
+            });
+          });
+          return;
+        }
+        sessionStorage.removeItem('trippool_php_reloaded');
+        window.addEventListener('load', function () {
+          if ('caches' in window) {
+            caches.keys().then(function (keys) {
+              keys.forEach(function (k) {
+                if (k.indexOf('workbox-precache') !== -1) {
+                  caches.delete(k);
+                }
+              });
+            });
+          }
+          navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).then(function (reg) {
+            reg.update();
+          }).catch(function () {});
+        });
+      })();
+    </script>
+    <script type="module" crossorigin src="./assets/index-BbUt8_7b.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-DjZ5PJDv.css">
   </head>
   <body>
     <div id="root"></div>
   </body>
 </html>
-

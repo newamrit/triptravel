@@ -1,40 +1,65 @@
-# TripPool Nepal - Group Travel Expense & Float Fund Manager
+# TripPool Nepal — 100% Database-Driven Shared Travel Expense Manager
 
-TripPool is a mobile-first Progressive Web Application (PWA) designed for group roadtrips, mountain expeditions, and overland travel. It simplifies float fund pool deposits, expense receipt logging with live camera capture, and automated debt settlement calculations.
-
----
-
-## ✨ Features
-
-- 🔐 **Encrypted Authentication**: PBKDF2-HMAC-SHA256 (100k iterations) password security with anti-brute force lockout and 24h session expiration.
-- 💵 **Live Pool Cash Balance**: Auto-calculates remaining float cash, total deposits, and category expense distribution.
-- 📸 **Receipt Photo Capture**: Real-time camera viewfinder & file upload with client-side canvas image compression.
-- ⚖️ **Smart Debt Engine**: Calculates optimal debt reconciliation (Pool Custodian vs Peer-to-Peer calculation modes).
-- 📲 **Installable PWA**: Standalone mobile app installation with offline mountain mode support.
-- 🛡️ **cPanel Hardened**: Includes `.htaccess` for Apache hosting with HTTPS enforcement, SPA route fallback, and security response headers.
+A full-stack, mobile-ready roadtrip float pool & settlement application built for shared cPanel PHP/MySQL hosting.
 
 ---
 
-## 🚀 Quick Start & Development
+## 1. Required Files for Shared cPanel Hosting
 
+When you run `npm run build`, all required production files are compiled into **`dist/`** (and mirrored in **`cpanel_public_html/`**):
+
+```text
+public_html/
+├── .htaccess               # Apache routing & security rules (protects .env & .sql, routes /api/*)
+├── index.html              # Compiled React SPA entry point
+├── debug.php               # Interactive cPanel MySQL setup & diagnostic dashboard
+├── manifest.webmanifest    # PWA manifest
+├── sw.js                   # Network-first Service Worker (bypasses .php & /api/*)
+├── registerSW.js           # Service Worker registration helper
+├── icon.svg / *.png        # App icons
+├── assets/                 # Minified JS & CSS bundles
+└── api/                    # PHP PDO / MySQL REST API
+    ├── db.php              # MySQL connection, self-healing schema & auto-seeding
+    ├── login.php           # PBKDF2-SHA256 user login & registration
+    ├── trips.php           # Trip profile GET/PUT endpoint
+    ├── members.php         # Members CRUD endpoint (with cascade name updates)
+    ├── deposits.php        # Pool deposits CRUD endpoint
+    ├── expenses.php        # Expenses & Base64 receipt photo CRUD endpoint
+    ├── sync.php            # Batch offline queue synchronization endpoint
+    ├── health.php          # Live database health check endpoint
+    └── debug.php           # Alias for /debug.php
+```
+
+And in the project root:
+- **`database.sql`** — Complete MySQL schema + **Upper Mustang Overland 2026** dummy data for one-click import in **cPanel → phpMyAdmin**.
+
+---
+
+## 2. How to Host on Shared cPanel Hosting (Zero Errors)
+
+### Step 1: Build the Production Bundle
 ```bash
-# Install dependencies
-npm install
-
-# Start local development server
-npm run dev
-
-# Run TypeScript linter
-npm run lint
-
-# Build for production
 npm run build
 ```
 
+### Step 2: Upload Files to `public_html/`
+Upload all contents of **`dist/`** (or **`cpanel_public_html/`**) into your cPanel **`public_html/`** folder (or any subdirectory such as `public_html/trippool/`).
+- Make sure **"Show Hidden Files (dotfiles)"** is enabled in cPanel File Manager so **`.htaccess`** is uploaded.
+
+### Step 3: Connect Your cPanel MySQL Database
+1. In **cPanel → MySQL Database Wizard**, create a database and user with **ALL PRIVILEGES**.
+2. **(Optional)** Import **`database.sql`** via **cPanel → phpMyAdmin** *(or let `api/db.php` automatically create and seed all 7 tables on first connection)*.
+3. Visit **`https://yourdomain.com/debug.php`** in your browser and enter your MySQL Database Name, Username, and Password in the setup form — or edit `$db_host`, `$db_name`, `$db_user`, and `$db_pass` at the top of **`public_html/api/db.php`**.
+
 ---
 
-## 📄 cPanel Deployment Guide
+## 3. Default Login Accounts (`database.sql`)
 
-For full cPanel deployment instructions, Apache security configurations, and database sync setup, view:
-
-👉 **[cPanel Deployment Guide (CPANEL_DEPLOYMENT_GUIDE.md)](./CPANEL_DEPLOYMENT_GUIDE.md)**
+| Role | Name | Email | Password |
+| :--- | :--- | :--- | :--- |
+| **Trip Leader** | Amrit Timilsina | `amrit.timilsinaa@gmail.com` | `Trip@2026` |
+| **Trip Leader** | Amrit Timilsina | `leader@trippool.app` | `Trip@2026` |
+| **Member** | Bikash Thapa | `bikash@trippool.app` | `Trip@2026` |
+| **Member** | Saurav Joshi | `saurav@trippool.app` | `Trip@2026` |
+| **Member** | Ayush Shrestha | `ayush@trippool.app` | `Trip@2026` |
+| **Member** | Prashant Karki | `prashant@trippool.app` | `Trip@2026` |

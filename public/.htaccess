@@ -1,104 +1,70 @@
-# Apache .htaccess configuration for cPanel SPA Deployment & Hardened Web Security
-# TripPool - Live Shared Travel Expenses & Pool Settlement
+# Apache .htaccess configuration for cPanel Shared Hosting (SPA + PHP/MySQL REST API)
+# TripPool Nepal - 100% Database-Driven Shared Travel Expense Manager
 
 <IfModule mod_rewrite.c>
   RewriteEngine On
-  RewriteBase /
 
-  # 1. Force HTTPS (SSL/TLS Encryption in Transit)
-  RewriteCond %{HTTPS} off
-  RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+  # 1. Explicit Bypass for debug.php and ANY .php script FIRST so Apache executes PHP directly
+  RewriteCond %{REQUEST_URI} \.php [NC]
+  RewriteRule ^ - [L]
 
-  # 2. cPanel Apache API Endpoint Rewrites (Routes /api/* to /api/*.php)
+  # 2. cPanel Apache API Endpoint Rewrites (Routes extensionless /api/* to api/*.php)
+  RewriteRule ^debug/?$ debug.php [L,QSA]
+  RewriteRule ^api/debug/?$ debug.php [L,QSA]
+  RewriteRule ^api/health/?$ api/health.php [L,QSA]
+  RewriteRule ^api/sync/?$ api/sync.php [L,QSA]
+
   RewriteRule ^api/members/?$ api/members.php [L,QSA]
-  RewriteRule ^api/members/([0-9]+)$ api/members.php?id=$1 [L,QSA]
+  RewriteRule ^api/members/([0-9]+)/?$ api/members.php?id=$1 [L,QSA]
 
   RewriteRule ^api/expenses/?$ api/expenses.php [L,QSA]
-  RewriteRule ^api/expenses/([0-9]+)$ api/expenses.php?id=$1 [L,QSA]
+  RewriteRule ^api/expenses/([0-9]+)/?$ api/expenses.php?id=$1 [L,QSA]
 
   RewriteRule ^api/deposits/?$ api/deposits.php [L,QSA]
-  RewriteRule ^api/deposits/([0-9]+)$ api/deposits.php?id=$1 [L,QSA]
+  RewriteRule ^api/deposits/([0-9]+)/?$ api/deposits.php?id=$1 [L,QSA]
 
   RewriteRule ^api/trips/?$ api/trips.php [L,QSA]
+  RewriteRule ^api/trips/([0-9]+)/?$ api/trips.php?id=$1 [L,QSA]
 
   RewriteRule ^api/auth/login/?$ api/login.php [L,QSA]
+  RewriteRule ^api/auth/register/?$ api/login.php?action=register [L,QSA]
 
-  # 3. Bypass PHP files from SPA fallback
-  RewriteCond %{REQUEST_URI} \.php$ [NC]
-  RewriteRule .* - [L]
+  # 3. Serve existing static files and directories directly
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
 
-  # 4. SPA Fallback Routing for React
-  # If requested path is not an existing file or directory, serve index.html
-  RewriteCond %{REQUEST_FILENAME} !-f
-  RewriteCond %{REQUEST_FILENAME} !-d
+  # 4. SPA Fallback Routing for React (non-PHP, non-API, non-debug routes only)
+  RewriteCond %{REQUEST_URI} !\.php [NC]
+  RewriteCond %{REQUEST_URI} !/api/ [NC]
+  RewriteCond %{REQUEST_URI} !debug [NC]
   RewriteRule ^ index.html [L]
 </IfModule>
 
-# 3. Disable Directory Browsing
+# Disable Directory Browsing
 Options -Indexes
 
-# 4. Protect Dotfiles, Source Files, & Sensitive Configurations
-<FilesMatch "^\.">
-  Order allow,deny
-  Deny from all
+# Protect .env and .sql files from public browser access
+<FilesMatch "^(\.env|.*\.sql)$">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+  </IfModule>
 </FilesMatch>
 
-<FilesMatch "\.(env|json|config|md|ts|tsx|map)$">
-  Order allow,deny
-  Deny from all
-</FilesMatch>
-
-# Exception: Allow index.html and manifest files
-<FilesMatch "^(index\.html|manifest\.json|robots\.txt)$">
-  Order allow,deny
-  Allow from all
-</FilesMatch>
-
-# 5. Security Headers
+# Security & Cache Control Headers
 <IfModule mod_headers.c>
-  # Prevent Clickjacking attacks
   Header set X-Frame-Options "SAMEORIGIN"
-  
-  # Prevent MIME type sniffing
   Header set X-Content-Type-Options "nosniff"
-  
-  # Enable XSS protection filter
-  Header set X-XSS-Protection "1; mode=block"
-  
-  # Referrer policy for privacy
   Header set Referrer-Policy "strict-origin-when-cross-origin"
-  
-  # Content Security Policy (allows camera blob, base64 data URLs for receipt photos)
-  Header set Content-Security-Policy "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https:; img-src 'self' data: blob: https:; media-src 'self' blob:; connect-src 'self' https: wss:;"
-</IfModule>
 
-# 6. Optimized Caching & Performance for cPanel Static Hosting
-<IfModule mod_expires.c>
-  ExpiresActive On
-  ExpiresDefault "access plus 1 month"
-  
-  # HTML - Never cache so new builds take effect immediately
-  ExpiresByType text/html "access plus 0 seconds"
-  
-  # Assets (CSS/JS with hashes) - Cache for 1 year
-  ExpiresByType text/css "access plus 1 year"
-  ExpiresByType application/javascript "access plus 1 year"
-  
-  # Images
-  ExpiresByType image/png "access plus 1 year"
-  ExpiresByType image/jpg "access plus 1 year"
-  ExpiresByType image/jpeg "access plus 1 year"
-  ExpiresByType image/svg+xml "access plus 1 year"
-</IfModule>
-
-<IfModule mod_headers.c>
-  <FilesMatch "\.(html)$">
-    Header set Cache-Control "no-cache, no-store, must-revalidate"
+  # Never cache HTML, PHP, or Service Worker files so updates & debug.php work immediately
+  <FilesMatch "\.(html|php|webmanifest)$|^sw\.js$|^registerSW\.js$">
+    Header set Cache-Control "no-cache, no-store, must-revalidate, max-age=0"
     Header set Pragma "no-cache"
     Header set Expires 0
-  </FilesMatch>
-  
-  <FilesMatch "\.(js|css|png|jpg|jpeg|svg|woff2)$">
-    Header set Cache-Control "public, max-age=31536000, immutable"
   </FilesMatch>
 </IfModule>

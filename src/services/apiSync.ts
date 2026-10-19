@@ -10,83 +10,117 @@ export interface SyncResult {
 
 export class ApiSyncService {
   /**
-   * Test connection to the PHP backend
+   * Test connection to the MySQL / PHP backend
    */
-  static async testConnection(baseUrl: string): Promise<{ success: boolean; message: string }> {
-    if (!baseUrl) {
-      return { success: false, message: 'Please provide a valid PHP API URL.' };
+  static async testConnection(baseUrl?: string): Promise<{
+    success: boolean;
+    message: string;
+    diagnostics?: any;
+  }> {
+    let base = StorageService.getApiBase();
+    if (baseUrl && baseUrl.trim() !== '' && baseUrl.trim() !== './api' && baseUrl.trim() !== '/api') {
+      base = baseUrl.trim().replace(/\/+$/, '');
+      if (base.endsWith('/api')) {
+        base = base.slice(0, -4);
+      }
     }
-
-    const cleanUrl = baseUrl.replace(/\/+$/, '');
-    const testEndpoint = `${cleanUrl}/settlement.php?trip_id=1`;
 
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 6000);
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
 
-      const res = await fetch(testEndpoint, {
-        method: 'GET',
-        headers: { 'Accept': 'application/json' },
-        signal: controller.signal
-      });
+      // Try health.php / health endpoint
+      const endpoints = [`${base}/api/health.php`, `${base}/api/health`, `${base}/debug.php?format=json`];
+      for (const ep of endpoints) {
+        try {
+          const res = await fetch(ep, {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+            signal: controller.signal,
+            cache: 'no-store'
+          });
+          const contentType = res.headers.get('content-type') || '';
+          if (contentType.includes('application/json')) {
+            const json = await res.json();
+            clearTimeout(timeoutId);
+
+            if (res.ok && (json.status === 'connected' || json.status === 'online' || json.database?.connected)) {
+              const dbName = json.database?.config?.database || json.database || 'MySQL';
+              const stats = json.stats || {
+                members: json.database?.tables?.members?.count ?? 0,
+                expenses: json.database?.tables?.expenses?.count ?? 0,
+                deposits: json.database?.tables?.deposits?.count ?? 0,
+                receipts: 0
+              };
+              return {
+                success: true,
+                message: `Connected to Database (${dbName})! Live records: ${stats.members} Members, ${stats.expenses} Expenses, ${stats.deposits} Deposits.`,
+                diagnostics: json
+              };
+            } else {
+              return {
+                success: false,
+                message: json.error || json.database?.error || 'Database responded with an error. Check credentials in api/db.php.',
+                diagnostics: json
+              };
+            }
+          }
+        } catch {
+          // Try next endpoint
+        }
+      }
 
       clearTimeout(timeoutId);
-
-      if (!res.ok) {
-        return {
-          success: false,
-          message: `Backend returned HTTP status ${res.status}: ${res.statusText}`
-        };
-      }
-
-      const json = await res.json();
-      if (json && json.success) {
-        return {
-          success: true,
-          message: `Connected successfully! Trip: ${json.data?.trip?.title || 'TripPool'} (Pool: ${json.data?.currency || 'Rs.'} ${json.data?.summary?.pool_cash_remaining ?? 0})`
-        };
-      } else {
-        return {
-          success: false,
-          message: json.error || 'Server responded without success status.'
-        };
-      }
+      return {
+        success: false,
+        message: 'Could not reach PHP/MySQL API endpoints. Verify files are uploaded to public_html/api/.'
+      };
     } catch (err: any) {
       return {
         success: false,
-        message: err.name === 'AbortError' ? 'Connection timed out (6s).' : `Network error: ${err.message}`
+        message: err.name === 'AbortError' ? 'Connection timed out (8s).' : `Network error: ${err.message}`
       };
     }
   }
 
   /**
-   * Sync all pending items from offline queue to PHP REST backend
+   * Fetch full diagnostic report from debug.php?format=json (Trip Leader Only)
+   */
+  static async fetchDiagnostics(): Promise<any> {
+    const base = StorageService.getApiBase();
+    const urls = [`${base}/debug.php?format=json&leader_token=trippool_leader_2026`, `${base}/api/health.php`, `${base}/api/health`];
+    for (const url of urls) {
+      try {
+        const res = await fetch(url, { cache: 'no-store' });
+        const contentType = res.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          return await res.json();
+        }
+      } catch {
+        // continue
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Sync all pending items from offline queue to MySQL REST backend
    */
   static async processQueue(config: AppConfig): Promise<SyncResult> {
     if (config.isSimulatedOffline) {
       return {
         success: false,
-        message: 'Mountain Offline Mode is active. Turn it off to sync.',
+        message: 'Mountain Offline Mode is active. Turn it off to sync to database.',
         syncedCount: 0,
         failedCount: 0
       };
     }
 
-    if (!config.backendApiUrl) {
-      return {
-        success: true,
-        message: 'Running in Local Mountain Mode. All data is safely preserved in browser storage.',
-        syncedCount: 0,
-        failedCount: 0
-      };
-    }
-
-    const cleanUrl = config.backendApiUrl.replace(/\/+$/, '');
     const queue = StorageService.getQueue();
     if (queue.length === 0) {
       return {
         success: true,
-        message: 'Sync queue is empty. Everything is up to date!',
+        message: 'Sync queue is empty. All records are synced with the database!',
         syncedCount: 0,
         failedCount: 0
       };
@@ -99,35 +133,33 @@ export class ApiSyncService {
     for (let i = 0; i < queue.length; i++) {
       const item = queue[i];
       let endpoint = '';
-      let payload = item.payload;
+      const payload = item.payload;
 
-      if (item.type === 'member') endpoint = `${cleanUrl}/members.php`;
-      else if (item.type === 'deposit') endpoint = `${cleanUrl}/deposits.php`;
-      else if (item.type === 'expense') endpoint = `${cleanUrl}/expenses.php`;
+      if (item.type === 'member') endpoint = '/api/members';
+      else if (item.type === 'deposit') endpoint = '/api/deposits';
+      else if (item.type === 'expense') endpoint = '/api/expenses';
 
       try {
-        const res = await fetch(endpoint, {
+        const json = await StorageService.fetchApiJson(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
 
-        const json = await res.json();
-        if (res.ok && json.success) {
+        if (json && (json.success || json.id)) {
           syncedCount++;
-          // remove from remaining
           const idx = remainingQueue.findIndex(q => q.id === item.id);
           if (idx !== -1) remainingQueue.splice(idx, 1);
         } else {
           failedCount++;
           item.status = 'failed';
-          item.errorMessage = json.error || 'Request rejected by API';
+          item.errorMessage = json?.error || 'Request rejected by database API';
         }
       } catch (err: any) {
         failedCount++;
         item.status = 'failed';
         item.errorMessage = err.message || 'Network failure';
-        break; // stop further attempts if network drops
+        break;
       }
     }
 
@@ -136,17 +168,17 @@ export class ApiSyncService {
     return {
       success: failedCount === 0,
       message: failedCount === 0
-        ? `Successfully pushed ${syncedCount} queued transactions to MySQL backend!`
-        : `Synced ${syncedCount} records, but ${failedCount} could not be pushed.`,
+        ? `Successfully synced ${syncedCount} offline transaction(s) to MySQL database!`
+        : `Synced ${syncedCount} record(s), ${failedCount} still pending.`,
       syncedCount,
       failedCount
     };
   }
 
   /**
-   * Pull latest data from PHP backend
+   * Pull latest data from MySQL backend
    */
-  static async pullFromBackend(config: AppConfig, tripId: number = 1): Promise<{
+  static async pullFromBackend(config: AppConfig): Promise<{
     success: boolean;
     data?: {
       trip: Trip;
@@ -156,40 +188,24 @@ export class ApiSyncService {
     };
     error?: string;
   }> {
-    if (config.isSimulatedOffline || !config.backendApiUrl) {
-      return { success: false, error: 'Backend URL not configured or offline mode enabled.' };
+    if (config.isSimulatedOffline) {
+      return { success: false, error: 'Offline mode is active.' };
     }
 
-    const cleanUrl = config.backendApiUrl.replace(/\/+$/, '');
-
     try {
-      const [membersRes, depositsRes, expensesRes] = await Promise.all([
-        fetch(`${cleanUrl}/members.php?trip_id=${tripId}`),
-        fetch(`${cleanUrl}/deposits.php?trip_id=${tripId}`),
-        fetch(`${cleanUrl}/expenses.php?trip_id=${tripId}`)
+      const [trip, members, deposits, expenses] = await Promise.all([
+        StorageService.fetchTripFromApi(),
+        StorageService.fetchMembersFromApi(),
+        StorageService.fetchDepositsFromApi(),
+        StorageService.fetchExpensesFromApi()
       ]);
-
-      const [membersJson, depositsJson, expensesJson] = await Promise.all([
-        membersRes.json(),
-        depositsRes.json(),
-        expensesRes.json()
-      ]);
-
-      if (!membersJson.success || !depositsJson.success || !expensesJson.success) {
-        return { success: false, error: 'One or more API endpoints returned an error.' };
-      }
 
       return {
         success: true,
-        data: {
-          trip: StorageService.getTrip(),
-          members: membersJson.data.members,
-          deposits: depositsJson.data.deposits,
-          expenses: expensesJson.data.expenses
-        }
+        data: { trip, members, deposits, expenses }
       };
     } catch (err: any) {
-      return { success: false, error: err.message || 'Failed to fetch from backend.' };
+      return { success: false, error: err.message || 'Failed to fetch from database.' };
     }
   }
 }

@@ -1,0 +1,276 @@
+{
+  "trip": {
+    "id": 1,
+    "title": "Upper Mustang Overland 2026",
+    "destination": "Pokhara • Marpha • Kagbeni • Lo Manthang",
+    "currency": "Rs.",
+    "start_date": "2026-10-15",
+    "end_date": "2026-10-24",
+    "status": "active"
+  },
+  "members": [
+    {
+      "id": 1,
+      "trip_id": 1,
+      "name": "Amrit Timilsina",
+      "phone": "+977-9851148290",
+      "notes": "Trip Leader & Float Pool Custodian",
+      "is_leader": true,
+      "is_active": true
+    },
+    {
+      "id": 2,
+      "trip_id": 1,
+      "name": "Bikash Thapa",
+      "phone": "+977-9841623104",
+      "notes": "Lead 4WD Hilux Driver & Route Planner",
+      "is_leader": false,
+      "is_active": true
+    },
+    {
+      "id": 3,
+      "trip_id": 1,
+      "name": "Saurav Joshi",
+      "phone": "+977-9801934512",
+      "notes": "Aerial Drone & Travel Photographer",
+      "is_leader": false,
+      "is_active": true
+    },
+    {
+      "id": 4,
+      "trip_id": 1,
+      "name": "Ayush Shrestha",
+      "phone": "+977-9860412890",
+      "notes": "Logistics, Permits & Homestay Coordinator",
+      "is_leader": false,
+      "is_active": true
+    },
+    {
+      "id": 5,
+      "trip_id": 1,
+      "name": "Prashant Karki",
+      "phone": "+977-9849087321",
+      "notes": "Co-Driver & Mechanical Backup",
+      "is_leader": false,
+      "is_active": true
+    }
+  ],
+  "deposits": [
+    {
+      "id": 1,
+      "trip_id": 1,
+      "member_id": 1,
+      "member_name": "Amrit Timilsina",
+      "amount": 10000,
+      "payment_method": "Cash",
+      "notes": "Initial leader float cash contribution in Kathmandu",
+      "deposited_at": "2026-10-15 07:30:00"
+    },
+    {
+      "id": 2,
+      "trip_id": 1,
+      "member_id": 2,
+      "member_name": "Bikash Thapa",
+      "amount": 10000,
+      "payment_method": "Fonepay",
+      "notes": "Fonepay QR transfer to Trip Pool account",
+      "deposited_at": "2026-10-15 08:00:00"
+    },
+    {
+      "id": 3,
+      "trip_id": 1,
+      "member_id": 3,
+      "member_name": "Saurav Joshi",
+      "amount": 10000,
+      "payment_method": "Bank Transfer",
+      "notes": "Nabil Bank eBanking advance deposit",
+      "deposited_at": "2026-10-15 08:20:00"
+    },
+    {
+      "id": 4,
+      "trip_id": 1,
+      "member_id": 4,
+      "member_name": "Ayush Shrestha",
+      "amount": 10000,
+      "payment_method": "Fonepay",
+      "notes": "Advance pool deposit via Fonepay QR",
+      "deposited_at": "2026-10-15 08:45:00"
+    },
+    {
+      "id": 5,
+      "trip_id": 1,
+      "member_id": 5,
+      "member_name": "Prashant Karki",
+      "amount": 10000,
+      "payment_method": "Cash",
+      "notes": "Cash handed to Amrit at Pokhara Lakeside checkpoint",
+      "deposited_at": "2026-10-15 18:15:00"
+    }
+  ],
+  "expenses": [
+    {
+      "id": 6,
+      "trip_id": 1,
+      "payer_type": "member",
+      "payer_member_id": 3,
+      "payer_member_name": "Saurav Joshi",
+      "amount": 1750,
+      "category": "Food & Snacks",
+      "description": "Yak cheese platters, apple pie & masala tea at Kagbeni View Point (paid by Saurav)",
+      "split_type": "equal",
+      "receipt_image": null,
+      "expense_date": "2026-10-17 15:20:00",
+      "splits": [
+        { "member_id": 1, "member_name": "Amrit Timilsina", "split_amount": 350 },
+        { "member_id": 2, "member_name": "Bikash Thapa", "split_amount": 350 },
+        { "member_id": 3, "member_name": "Saurav Joshi", "split_amount": 350 },
+        { "member_id": 4, "member_name": "Ayush Shrestha", "split_amount": 350 },
+        { "member_id": 5, "member_name": "Prashant Karki", "split_amount": 350 }
+      ]
+    },
+    {
+      "id": 5,
+      "trip_id": 1,
+      "payer_type": "member",
+      "payer_member_id": 2,
+      "payer_member_name": "Bikash Thapa",
+      "amount": 2500,
+      "category": "Vehicle Maintenance/Spares",
+      "description": "Heavy-duty air filter cleaning, brake fluid & tire pressure service at Jomsom (paid by Bikash)",
+      "split_type": "equal",
+      "receipt_image": null,
+      "expense_date": "2026-10-17 10:15:00",
+      "splits": [
+        { "member_id": 1, "member_name": "Amrit Timilsina", "split_amount": 500 },
+        { "member_id": 2, "member_name": "Bikash Thapa", "split_amount": 500 },
+        { "member_id": 3, "member_name": "Saurav Joshi", "split_amount": 500 },
+        { "member_id": 4, "member_name": "Ayush Shrestha", "split_amount": 500 },
+        { "member_id": 5, "member_name": "Prashant Karki", "split_amount": 500 }
+      ]
+    },
+    {
+      "id": 4,
+      "trip_id": 1,
+      "payer_type": "pool",
+      "payer_member_id": null,
+      "payer_member_name": "Trip Pool",
+      "amount": 7500,
+      "category": "Hotel/Stay",
+      "description": "Marpha Orchard Courtyard Lodge - 2 family rooms, campfire & dinner",
+      "split_type": "equal",
+      "receipt_image": null,
+      "expense_date": "2026-10-16 20:30:00",
+      "splits": [
+        { "member_id": 1, "member_name": "Amrit Timilsina", "split_amount": 1500 },
+        { "member_id": 2, "member_name": "Bikash Thapa", "split_amount": 1500 },
+        { "member_id": 3, "member_name": "Saurav Joshi", "split_amount": 1500 },
+        { "member_id": 4, "member_name": "Ayush Shrestha", "split_amount": 1500 },
+        { "member_id": 5, "member_name": "Prashant Karki", "split_amount": 1500 }
+      ]
+    },
+    {
+      "id": 3,
+      "trip_id": 1,
+      "payer_type": "pool",
+      "payer_member_id": null,
+      "payer_member_name": "Trip Pool",
+      "amount": 3250,
+      "category": "Food & Snacks",
+      "description": "Thakali Mutton Thali lunch & seabuckthorn juice at Lete Kalopani",
+      "split_type": "equal",
+      "receipt_image": null,
+      "expense_date": "2026-10-16 13:45:00",
+      "splits": [
+        { "member_id": 1, "member_name": "Amrit Timilsina", "split_amount": 650 },
+        { "member_id": 2, "member_name": "Bikash Thapa", "split_amount": 650 },
+        { "member_id": 3, "member_name": "Saurav Joshi", "split_amount": 650 },
+        { "member_id": 4, "member_name": "Ayush Shrestha", "split_amount": 650 },
+        { "member_id": 5, "member_name": "Prashant Karki", "split_amount": 650 }
+      ]
+    },
+    {
+      "id": 2,
+      "trip_id": 1,
+      "payer_type": "pool",
+      "payer_member_id": null,
+      "payer_member_name": "Trip Pool",
+      "amount": 5000,
+      "category": "Entry Permits/Tickets",
+      "description": "ACAP entry permits & Beni-Jomsom corridor checkpost fees (5 pax)",
+      "split_type": "equal",
+      "receipt_image": null,
+      "expense_date": "2026-10-16 09:30:00",
+      "splits": [
+        { "member_id": 1, "member_name": "Amrit Timilsina", "split_amount": 1000 },
+        { "member_id": 2, "member_name": "Bikash Thapa", "split_amount": 1000 },
+        { "member_id": 3, "member_name": "Saurav Joshi", "split_amount": 1000 },
+        { "member_id": 4, "member_name": "Ayush Shrestha", "split_amount": 1000 },
+        { "member_id": 5, "member_name": "Prashant Karki", "split_amount": 1000 }
+      ]
+    },
+    {
+      "id": 1,
+      "trip_id": 1,
+      "payer_type": "pool",
+      "payer_member_id": null,
+      "payer_member_name": "Trip Pool",
+      "amount": 8500,
+      "category": "Fuel",
+      "description": "Full tank diesel for 4WD Hilux at Pokhara Highway Fuel Station",
+      "split_type": "equal",
+      "receipt_image": null,
+      "expense_date": "2026-10-15 19:00:00",
+      "splits": [
+        { "member_id": 1, "member_name": "Amrit Timilsina", "split_amount": 1700 },
+        { "member_id": 2, "member_name": "Bikash Thapa", "split_amount": 1700 },
+        { "member_id": 3, "member_name": "Saurav Joshi", "split_amount": 1700 },
+        { "member_id": 4, "member_name": "Ayush Shrestha", "split_amount": 1700 },
+        { "member_id": 5, "member_name": "Prashant Karki", "split_amount": 1700 }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "id": "user_amrit",
+      "email": "amrit.timilsinaa@gmail.com",
+      "name": "Amrit Timilsina",
+      "role": "leader",
+      "member_id": 1
+    },
+    {
+      "id": "user_leader_1",
+      "email": "leader@trippool.app",
+      "name": "Amrit Timilsina",
+      "role": "leader",
+      "member_id": 1
+    },
+    {
+      "id": "user_member_2",
+      "email": "bikash@trippool.app",
+      "name": "Bikash Thapa",
+      "role": "member",
+      "member_id": 2
+    },
+    {
+      "id": "user_member_3",
+      "email": "saurav@trippool.app",
+      "name": "Saurav Joshi",
+      "role": "member",
+      "member_id": 3
+    },
+    {
+      "id": "user_member_4",
+      "email": "ayush@trippool.app",
+      "name": "Ayush Shrestha",
+      "role": "member",
+      "member_id": 4
+    },
+    {
+      "id": "user_member_5",
+      "email": "prashant@trippool.app",
+      "name": "Prashant Karki",
+      "role": "member",
+      "member_id": 5
+    }
+  ]
+}

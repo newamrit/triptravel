@@ -1,157 +1,160 @@
 <?php
 /**
- * TripPool REST API: Deposits
- * GET: Fetch deposit transaction ledger and total collected fund
- * POST: Record a cash or digital contribution into the group pool
+ * TripPool Nepal - Deposits Database REST API (PHP / cPanel)
+ * Supports GET, POST, PUT, DELETE + POST _method override.
  */
 
-if (file_exists(__DIR__ . '/db.php')) {
-    require_once __DIR__ . '/db.php';
-} else {
-    require_once __DIR__ . '/../db.php';
-}
+require_once __DIR__ . '/db.php';
 
-$pdo = getDbConnection();
+$data = getRequestData();
 $method = $_SERVER['REQUEST_METHOD'];
 
-if ($method === 'GET') {
-    $tripId = isset($_GET['trip_id']) ? (int)$_GET['trip_id'] : 1;
-    $memberId = isset($_GET['member_id']) ? (int)$_GET['member_id'] : null;
+if ($method === 'POST' && !empty($_GET['_method'])) {
+    $method = strtoupper($_GET['_method']);
+} elseif ($method === 'POST' && !empty($data['_method'])) {
+    $method = strtoupper($data['_method']);
+}
 
-    try {
-        $sql = "
+switch ($method) {
+    case 'GET':
+        $stmt = $pdo->query("
             SELECT 
-                d.id,
-                d.trip_id,
-                d.member_id,
-                m.name AS member_name,
-                m.is_leader,
-                d.amount,
-                d.payment_method,
-                d.notes,
-                d.deposited_at,
-                d.created_at
+                d.*,
+                COALESCE(NULLIF(d.member_name, 'Member'), m.name, 'Member') AS resolved_member_name
             FROM deposits d
-            JOIN members m ON d.member_id = m.id
-            WHERE d.trip_id = :trip_id
-        ";
-        $params = ['trip_id' => $tripId];
-
-        if ($memberId) {
-            $sql .= " AND d.member_id = :member_id";
-            $params['member_id'] = $memberId;
-        }
-
-        $sql .= " ORDER BY d.deposited_at DESC, d.id DESC";
-
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute($params);
-        $deposits = $stmt->fetchAll();
-
-        // Calculate aggregates
-        $totalCollected = 0.0;
-        $byMethod = [
-            'Cash' => 0.0,
-            'Fonepay' => 0.0,
-            'Bank Transfer' => 0.0,
-            'Other' => 0.0
-        ];
-
-        foreach ($deposits as &$d) {
-            $d['id'] = (int)$d['id'];
-            $d['trip_id'] = (int)$d['trip_id'];
-            $d['member_id'] = (int)$d['member_id'];
-            $d['amount'] = (float)$d['amount'];
-            $d['is_leader'] = (bool)$d['is_leader'];
-
-            $totalCollected += $d['amount'];
-            $methodKey = $d['payment_method'];
-            if (isset($byMethod[$methodKey])) {
-                $byMethod[$methodKey] += $d['amount'];
-            } else {
-                $byMethod['Other'] += $d['amount'];
-            }
-        }
-
-        sendJson([
-            'trip_id' => $tripId,
-            'total_collected' => round($totalCollected, 2),
-            'by_payment_method' => $byMethod,
-            'count' => count($deposits),
-            'deposits' => $deposits
-        ]);
-    } catch (PDOException $e) {
-        sendError('Failed to fetch deposits: ' . $e->getMessage(), 500);
-    }
-} elseif ($method === 'POST') {
-    $input = getJsonInput();
-
-    $tripId = isset($input['trip_id']) ? (int)$input['trip_id'] : 1;
-    $memberId = isset($input['member_id']) ? (int)$input['member_id'] : null;
-    $amount = isset($input['amount']) ? (float)$input['amount'] : 0.0;
-    $paymentMethod = isset($input['payment_method']) ? trim($input['payment_method']) : 'Cash';
-    $notes = isset($input['notes']) ? trim($input['notes']) : null;
-    $depositedAt = !empty($input['deposited_at']) ? $input['deposited_at'] : date('Y-m-d H:i:s');
-
-    if (!$memberId) {
-        sendError('Member ID is required.', 422);
-    }
-    if ($amount <= 0) {
-        sendError('Deposit amount must be greater than zero.', 422);
-    }
-
-    $validMethods = ['Cash', 'Fonepay', 'Bank Transfer', 'Other'];
-    if (!in_array($paymentMethod, $validMethods, true)) {
-        $paymentMethod = 'Cash';
-    }
-
-    try {
-        // Verify member belongs to this trip
-        $checkStmt = $pdo->prepare("SELECT id, name FROM members WHERE id = :id AND trip_id = :trip_id");
-        $checkStmt->execute(['id' => $memberId, 'trip_id' => $tripId]);
-        $member = $checkStmt->fetch();
-        if (!$member) {
-            sendError('Invalid member specified for this trip.', 404);
-        }
-
-        $stmt = $pdo->prepare("
-            INSERT INTO deposits (trip_id, member_id, amount, payment_method, notes, deposited_at)
-            VALUES (:trip_id, :member_id, :amount, :payment_method, :notes, :deposited_at)
+            LEFT JOIN members m ON d.member_id = m.id
+            ORDER BY d.deposited_at DESC, d.id DESC
         ");
+        $deposits = $stmt->fetchAll();
+        $formatted = array_map(function($d) {
+            return [
+                "id" => (int)$d['id'],
+                "trip_id" => (int)$d['trip_id'],
+                "member_id" => (int)$d['member_id'],
+                "member_name" => $d['resolved_member_name'],
+                "amount" => (float)$d['amount'],
+                "payment_method" => $d['payment_method'],
+                "notes" => $d['notes'],
+                "deposited_at" => $d['deposited_at']
+            ];
+        }, $deposits);
+
+        echo json_encode($formatted);
+        break;
+
+    case 'POST':
+        $trip_id = (int)($data['trip_id'] ?? 1);
+        $member_id = (int)($data['member_id'] ?? 0);
+        $member_name = trim($data['member_name'] ?? '');
+        $amount = (float)($data['amount'] ?? 0);
+        $payment_method = $data['payment_method'] ?? 'Cash';
+        $notes = !empty($data['notes']) ? trim($data['notes']) : null;
+        $deposited_at = formatMysqlDateTime($data['deposited_at'] ?? null);
+
+        if ($member_id <= 0 || $amount <= 0) {
+            http_response_code(400);
+            echo json_encode(["success" => false, "error" => "Valid Member ID and amount are required"]);
+            exit();
+        }
+
+        if (empty($member_name) || $member_name === 'Unknown Member') {
+            $mStmt = $pdo->prepare("SELECT name FROM members WHERE id = :id LIMIT 1");
+            $mStmt->execute([':id' => $member_id]);
+            $mRow = $mStmt->fetch();
+            $member_name = $mRow ? $mRow['name'] : 'Member';
+        }
+
+        $stmt = $pdo->prepare("INSERT INTO deposits (trip_id, member_id, member_name, amount, payment_method, notes, deposited_at) VALUES (:trip_id, :member_id, :member_name, :amount, :payment_method, :notes, :deposited_at)");
         $stmt->execute([
-            'trip_id' => $tripId,
-            'member_id' => $memberId,
-            'amount' => $amount,
-            'payment_method' => $paymentMethod,
-            'notes' => $notes,
-            'deposited_at' => $depositedAt
+            ':trip_id' => $trip_id,
+            ':member_id' => $member_id,
+            ':member_name' => $member_name,
+            ':amount' => $amount,
+            ':payment_method' => $payment_method,
+            ':notes' => $notes,
+            ':deposited_at' => $deposited_at
         ]);
 
-        $newId = (int)$pdo->lastInsertId();
+        $depId = (int)$pdo->lastInsertId();
+        http_response_code(201);
+        echo json_encode(["success" => true, "id" => $depId, "member_name" => $member_name, "deposited_at" => $deposited_at]);
+        break;
 
-        // Calculate updated total collected
-        $sumStmt = $pdo->prepare("SELECT SUM(amount) AS total FROM deposits WHERE trip_id = :trip_id");
-        $sumStmt->execute(['trip_id' => $tripId]);
-        $newTotal = (float)$sumStmt->fetchColumn();
+    case 'PUT':
+        $id = (int)($_GET['id'] ?? $data['id'] ?? 0);
+        if ($id <= 0 && !empty($_SERVER['PATH_INFO'])) {
+            $path = explode('/', trim($_SERVER['PATH_INFO'], '/'));
+            $id = (int)end($path);
+        }
 
-        sendJson([
-            'message' => 'Deposit recorded successfully',
-            'id' => $newId,
-            'deposit' => [
-                'id' => $newId,
-                'trip_id' => $tripId,
-                'member_id' => $memberId,
-                'member_name' => $member['name'],
-                'amount' => round($amount, 2),
-                'payment_method' => $paymentMethod,
-                'notes' => $notes,
-                'deposited_at' => $depositedAt
-            ],
-            'updated_total_collected' => round($newTotal, 2)
-        ], 201);
-    } catch (PDOException $e) {
-        sendError('Failed to record deposit: ' . $e->getMessage(), 500);
-    }
-} else {
-    sendError('Method not allowed.', 405);
+        if ($id <= 0) {
+            http_response_code(400);
+            echo json_encode(["success" => false, "error" => "Valid Deposit ID is required"]);
+            exit();
+        }
+
+        $member_id = (int)($data['member_id'] ?? 0);
+        $member_name = trim($data['member_name'] ?? '');
+        $amount = (float)($data['amount'] ?? 0);
+        $payment_method = $data['payment_method'] ?? 'Cash';
+        $notes = array_key_exists('notes', $data) ? $data['notes'] : null;
+        $deposited_at = formatMysqlDateTime($data['deposited_at'] ?? null);
+
+        if ($member_id <= 0 || $amount <= 0) {
+            http_response_code(400);
+            echo json_encode(["success" => false, "error" => "Valid Member ID and amount are required"]);
+            exit();
+        }
+
+        if (empty($member_name) || $member_name === 'Unknown Member') {
+            $mStmt = $pdo->prepare("SELECT name FROM members WHERE id = :id LIMIT 1");
+            $mStmt->execute([':id' => $member_id]);
+            $mRow = $mStmt->fetch();
+            $member_name = $mRow ? $mRow['name'] : 'Member';
+        }
+
+        $stmt = $pdo->prepare("UPDATE deposits SET 
+            member_id = :member_id,
+            member_name = :member_name,
+            amount = :amount,
+            payment_method = :payment_method,
+            notes = :notes,
+            deposited_at = :deposited_at
+            WHERE id = :id");
+        $stmt->execute([
+            ':member_id' => $member_id,
+            ':member_name' => $member_name,
+            ':amount' => $amount,
+            ':payment_method' => $payment_method,
+            ':notes' => $notes,
+            ':deposited_at' => $deposited_at,
+            ':id' => $id
+        ]);
+
+        echo json_encode(["success" => true, "id" => $id]);
+        break;
+
+    case 'DELETE':
+        $id = (int)($_GET['id'] ?? $data['id'] ?? 0);
+        if ($id <= 0 && !empty($_SERVER['PATH_INFO'])) {
+            $path = explode('/', trim($_SERVER['PATH_INFO'], '/'));
+            $id = (int)end($path);
+        }
+
+        if ($id <= 0) {
+            http_response_code(400);
+            echo json_encode(["success" => false, "error" => "Valid Deposit ID is required"]);
+            exit();
+        }
+
+        $stmt = $pdo->prepare("DELETE FROM deposits WHERE id = :id");
+        $stmt->execute([':id' => $id]);
+
+        echo json_encode(["success" => true, "message" => "Deposit {$id} deleted"]);
+        break;
+
+    default:
+        http_response_code(405);
+        echo json_encode(["success" => false, "error" => "Method Not Allowed"]);
+        break;
 }
